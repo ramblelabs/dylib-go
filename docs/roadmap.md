@@ -92,7 +92,8 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] x86 TLSDESC GNU2 objects/archives, mixed GD/LD descriptors, reserved module bases and register-preserving entries; Clang/GCC and C++ thread-exit coverage.
 - [x] Opt-in plain C native ELF dynamic TLS on Linux amd64/386 (GD/LD/TLSDESC) and arm64 (GD/LD/TLSDESC), Clang/GCC objects, shared template storage, Go-generated ABI entries, native threads, lifecycle and retirement.
 - [x] Native Unix C++ wrapper initialization and common thread-exit registration without enabling emulated descriptors; object/archive calls, mode isolation, constructor callbacks/reentry, active code leases and pending/active thread cleanup.
-- [ ] Remaining ELF TLS models, native COFF TLS, additional Darwin TLS initialization/pointer models and Windows fiber qualification.
+- [x] Plain C native COFF TLS through Go-generated data-only PE carriers, packed SECREL offsets, MSVC/GNU producers, existing/new threads, per-image indices, lifecycle and code-lease retirement.
+- [ ] Remaining ELF TLS models, native Windows C++ TLS runtimes, additional Darwin TLS initialization/pointer models and Windows fiber qualification.
 - [x] Explicit packed record values through compiler-validated C bridges for Go/llgo, ordinary transport records, nested arrays, native pointers, factories and variadic calls without libffi.
 - [x] Explicit packed non-bitfield members through validated C bridges, including arrays, nested records, native pointers/factories, concrete variadic calls and packing combined with explicit member alignment.
 - [x] Named member-packed bitfields through compiler-validated C bridges, MSVC/MinGW allocation units, packed/aligned members, small/large native records, factories, pointers and variadic calls.

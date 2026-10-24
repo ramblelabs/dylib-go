@@ -235,7 +235,7 @@ func TestCOFFMixedCOMDATImportTemplateRejected(t *testing.T) {
 func TestCOFFMixedCOMDATKeepsUnsupported(t *testing.T) {
 	const target = "x86_64-pc-windows-msvc"
 	parts := longImportParts(t, target, "provider.dll")
-	data, _ := coffAssembly(t, target, longImportAssembly(target, longImportFixture{"add", "add", 0, false})+mixedCOMDATImportAssembly(target)+".section .tls$extra,\"dw\"\n.long 0\n")
+	data, _ := coffAssembly(t, target, longImportAssembly(target, longImportFixture{"add", "add", 0, false})+mixedCOMDATImportAssembly(target)+".section .tls_unsupported,\"dw\"\n.long 0\n")
 	f, err := parse("tls.lib", longImportArchive(append(parts, data)))
 	if err != nil {
 		t.Fatal(err)

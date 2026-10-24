@@ -151,9 +151,6 @@ func parseCOFF(name string, b []byte) (*file, error) {
 			}
 			o.groups = append(o.groups, g)
 		}
-		if strings.HasPrefix(s.name, ".tls") {
-			o.unsupported("TLS section " + s.name)
-		}
 		kind := lifecycleKind(0)
 		if strings.HasPrefix(s.name, ".CRT$XI") {
 			kind = lifecycleCInit
@@ -172,6 +169,11 @@ func parseCOFF(name string, b []byte) (*file, error) {
 			align = uint64(1) << (a - 1)
 		}
 		v := &section{name: s.name, size: uint64(s.size), align: align, exec: flags&0x20000000 != 0, write: flags&0x80000000 != 0}
+		if s.name == ".tls" || strings.HasPrefix(s.name, ".tls$") {
+			v.nativeTLS = coffTLSSection
+		} else if strings.HasPrefix(s.name, ".tls") {
+			o.unsupported("nonstandard TLS section " + s.name)
+		}
 		v.lifecycle = kind
 		if kind != 0 {
 			if err := configureLifecycle(v, o.info.Bits); err != nil {

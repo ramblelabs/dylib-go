@@ -92,6 +92,9 @@ func (im *image) relocate(o *object, r relocation) error {
 		}
 	}
 	if o.info.Format == "COFF" {
+		if done, err := im.relocateCOFFTLS(o, r, b); done || err != nil {
+			return err
+		}
 		sectionRelocation := r.typ == 10 || r.typ == 11
 		if o.info.Arch == "arm64" {
 			sectionRelocation = r.typ == 8 || r.typ == 9 || r.typ == 10 || r.typ == 11 || r.typ == 13
@@ -179,6 +182,16 @@ func (im *image) relocCOFFSection(o *object, r relocation, b []byte) error {
 		return nil
 	}
 	value := s.value
+	if sec := o.sections[s.section]; sec.nativeTLS == coffTLSSection {
+		if im.coffTLS == nil {
+			return fmt.Errorf("native COFF TLS requires an image-owned template")
+		}
+		offset, ok := im.coffTLS.sections[sec]
+		if !ok {
+			return fmt.Errorf("foreign native COFF TLS template")
+		}
+		value += offset
+	}
 	if o.info.Arch != "arm64" || r.typ == 8 {
 		if value+uint64(le.Uint32(b)) > math.MaxUint32 {
 			return fmt.Errorf("COFF section-relative offset overflow")

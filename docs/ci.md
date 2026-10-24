@@ -269,3 +269,12 @@ all ten relocation kinds, preserve annotation bytes, reject invalid operands,
 and cover descriptor-half addresses and both signed PC-relative limits. The
 existing register fixture keeps page addressing as its default. `tiny` compiler
 probes remain page-based; additional forms are qualified by independent assembly.
+
+Native Windows TLS cases compile both Clang MSVC and GNU targets at O0/O2, execute
+objects and archives, and validate packed section-relative offsets, large/aligned
+values and native-pointer constants. C threads and pinned Go threads are created
+before carrier loading; additional C threads cover OS TLS allocation at thread
+creation. Two concurrent images check distinct indices and values. Lifecycle,
+code-lease retirement and carrier file cleanup run through Go amd64/arm64/386
+and llgo amd64/arm64. Pure Go PE tests inspect both optional-header widths, all
+three machine types, TLS VA base relocations and absence of executable content.

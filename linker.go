@@ -36,10 +36,11 @@ type Options struct {
 	// values, documented C++ thread-exit registrations and Clang MSVC emulated
 	// TLS initialization. Native TLS uses the separate NativeTLS option.
 	EmulatedTLS bool
-	// NativeTLS enables native TLS in raw objects: macOS amd64/arm64
-	// TLV, Linux amd64/386 GD/LD/TLSDESC, and Linux arm64 TLSDESC. It reuses image-owned
-	// per-thread storage and lifetime guards, including compiler-generated
-	// nonthrowing C++ wrappers and thread-exit hooks. Native initial/local-exec,
+	// NativeTLS enables raw-object macOS amd64/arm64 TLV, Linux amd64/386/arm64
+	// GD/LD/TLSDESC, and plain Windows amd64/arm64/386 COFF TLS. Unix values use
+	// image-owned storage, with the documented C++ wrappers/thread-exit hooks.
+	// Windows uses a Go-generated data-only DLL for OS-owned TLS; no compiler is
+	// needed to build that carrier. Native ELF initial/local-exec,
 	// loader-managed TLS initializer sections and foreign providers remain unsupported.
 	NativeTLS bool
 	// RegisterUnwind registers supported raw-image runtime function tables.
@@ -216,7 +217,7 @@ func (s *Session) define(name string, address uintptr) error {
 	if emulatedTLSReserved(strings.TrimPrefix(name, "__imp_")) {
 		return fmt.Errorf("%s is reserved for image-owned TLS", name)
 	}
-	if runtime.GOOS == "linux" && elfTLSRuntime(name) || runtime.GOOS == "darwin" && strings.TrimPrefix(name, "__imp_") == machoTLSBootstrap {
+	if runtime.GOOS == "linux" && elfTLSRuntime(name) || runtime.GOOS == "darwin" && strings.TrimPrefix(name, "__imp_") == machoTLSBootstrap || runtime.GOOS == "windows" && coffTLSRuntime(strings.TrimPrefix(name, "__imp_")) {
 		return fmt.Errorf("%s is reserved for image-owned native TLS", name)
 	}
 	if runtimeHelper(strings.TrimPrefix(name, "__imp_")) {
@@ -442,7 +443,7 @@ func (s *Session) selectObjects(roots []string) ([]*object, error) {
 				}
 			}
 			for _, n := range wanted {
-				if s.opts.NativeTLS && (runtime.GOOS == "linux" && elfTLSRuntime(n) || runtime.GOOS == "darwin" && n == machoTLSBootstrap) {
+				if s.opts.NativeTLS && (runtime.GOOS == "linux" && elfTLSRuntime(n) || runtime.GOOS == "darwin" && n == machoTLSBootstrap || runtime.GOOS == "windows" && coffTLSRuntime(n)) {
 					continue
 				}
 				if s.opts.NativeTLS && (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && emulatedTLSThreadHelper(n) {
@@ -555,6 +556,9 @@ func (s *Session) link(roots []string) error {
 	}
 	im, err := newImage(objs, defs, s.external, imports, s.opts.EmulatedTLS, s.opts.NativeTLS)
 	if err != nil {
+		if im != nil {
+			s.failedImage, s.initErr = im, err
+		}
 		return err
 	}
 	for _, n := range roots {
@@ -708,6 +712,7 @@ type image struct {
 	emulatedTLS                            *native.EmulatedTLS
 	machoTLS                               *machoTLSLayout
 	elfTLS                                 *elfTLSLayout
+	coffTLS                                *coffTLSLayout
 	hooks                                  map[string]uintptr
 	initializers, finalizers               []uintptr
 	threadInitializers                     []uintptr
@@ -729,7 +734,7 @@ func alignUp(n, a uint64) uint64 {
 	}
 	return (n + a - 1) &^ (a - 1)
 }
-func newImage(objs []*object, defs map[string]definition, external func(string) uintptr, imports map[*coffImport]uintptr, emulatedTLS, nativeTLS bool) (*image, error) {
+func newImage(objs []*object, defs map[string]definition, external func(string) uintptr, imports map[*coffImport]uintptr, emulatedTLS, nativeTLS bool) (result *image, resultErr error) {
 	tlsNeeded, err := checkTLSRuntime(objs, Options{EmulatedTLS: emulatedTLS, NativeTLS: nativeTLS})
 	if err != nil {
 		return nil, err
@@ -739,6 +744,10 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 		return nil, err
 	}
 	elfTLSNeeded, err := checkELFTLS(objs, nativeTLS)
+	if err != nil {
+		return nil, err
+	}
+	coffTLSNeeded, err := checkCOFFTLS(objs, nativeTLS)
 	if err != nil {
 		return nil, err
 	}
@@ -847,6 +856,11 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 		}
 	}
 	size = alignUp(size, im.page)
+	if coffTLSNeeded {
+		if size, err = im.layoutCOFFTLS(size); err != nil {
+			return nil, err
+		}
+	}
 	im.gotStart = size
 	im.gotNext = size
 	size += alignUp((count+1)*im.pointerSize, im.page)
@@ -868,7 +882,9 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 	ok := false
 	defer func() {
 		if !ok {
-			im.close()
+			if cleanup := im.close(); cleanup != nil {
+				result, resultErr = im, errors.Join(resultErr, cleanup)
+			}
 		}
 	}()
 	if e := im.prepareRuntimeHelpers(); e != nil {
@@ -887,6 +903,12 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 	if elfTLSNeeded {
 		if err := im.prepareELFTLSHelper(); err != nil {
 			return nil, err
+		}
+	}
+	if coffTLSNeeded {
+		im.hooks[coffTLSIndex] = im.base + uintptr(im.coffTLS.index)
+		if objs[0].info.Arch == "386" {
+			im.hooks[coffTLSArray] = 0x2c
 		}
 	}
 	if e := im.fillStartupPadding(); e != nil {
@@ -967,6 +989,11 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 	if e := native.Protect(b[im.stubStart:], true, false); e != nil {
 		return nil, e
 	}
+	if coffTLSNeeded {
+		if err := im.prepareCOFFTLS(); err != nil {
+			return nil, err
+		}
+	}
 	ok = true
 	return im, nil
 }
@@ -974,7 +1001,7 @@ func (im *image) close() error {
 	if im.mem == nil {
 		return nil
 	}
-	if im.emulatedTLS != nil {
+	if im.emulatedTLS != nil || im.coffTLS != nil {
 		// Native finalizers may create TLS and register more thread callbacks.
 		// Keep their teardown on one native thread across separate C calls.
 		runtime.LockOSThread()
@@ -1007,6 +1034,9 @@ func (im *image) close() error {
 	}
 	if err := im.unwind.close(); err != nil {
 		// Never free code/table storage while the OS may still reference it.
+		return err
+	}
+	if err := im.coffTLS.close(native.Close); err != nil {
 		return err
 	}
 	im.lifecycle.Close()

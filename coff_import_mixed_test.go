@@ -156,7 +156,7 @@ func TestCOFFMixedLongImportData(t *testing.T) {
 func TestCOFFMixedLongImportKeepsUnsupported(t *testing.T) {
 	const target = "x86_64-pc-windows-msvc"
 	parts := longImportParts(t, target, "provider.dll")
-	data, _ := coffAssembly(t, target, longImportAssembly(target, longImportFixture{"add", "add", 0, false})+mixedImportAssembly(target)+".section .tls$AAA,\"dw\"\n.long 0\n")
+	data, _ := coffAssembly(t, target, longImportAssembly(target, longImportFixture{"add", "add", 0, false})+mixedImportAssembly(target)+".section .tls_unsupported,\"dw\"\n.long 0\n")
 	f, err := parse("tls.lib", longImportArchive(append(parts, data)))
 	if err != nil {
 		t.Fatal(err)

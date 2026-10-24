@@ -1,15 +1,17 @@
 # Raw-object TLS
 
-Both modes use image-owned native OS-thread values and the same native cleanup
-registry. Parsing, layout, validation, archive selection and relocation stay in
-Go. Complete shared libraries continue to use their OS loader's TLS support.
+Unix native and Clang emulated TLS use image-owned OS-thread values and the same
+cleanup registry. Native COFF TLS uses an OS-loaded data-only DLL. Parsing,
+layout, validation, archive selection and relocation stay in Go. Complete shared
+libraries continue to use their OS loader's TLS support.
 
 | Raw input model | Option | Qualified scope |
 | --- | --- | --- |
 | Native Mach-O TLV | `Options.NativeTLS` | C values and documented C++ wrappers, macOS amd64/arm64; initialized, zero-filled and aligned values |
 | Clang emulated TLS | `Options.EmulatedTLS` | Linux/macOS/Windows targets below, including documented C++ initialization/destruction |
 | Native ELF dynamic TLS | `Options.NativeTLS` | C values and documented C++ wrappers, Linux amd64/386 GD/LD/TLSDESC and arm64 GD/LD/TLSDESC |
-| Native ELF static TLS, COFF TLS, other Darwin models | None | Unsupported; use emulated TLS or a complete OS library |
+| Native COFF TLS | `Options.NativeTLS` | Plain constant/zero/aligned C TLS, Windows amd64/arm64/386; Clang MSVC/GNU objects and archives |
+| Native ELF static TLS, other Darwin models | None | Unsupported; use emulated TLS or a complete OS library |
 
 ## Native Mach-O TLV
 
@@ -48,7 +50,7 @@ image-owned TLV descriptors. Ordinary references to template/descriptor bytes,
 foreign or OS-library TLV descriptors, nonzero keys, bootstrap overrides,
 unsupported opcodes/addends and partial/overlapping descriptors fail before
 publication. Thread-local pointer and loader-managed initializer sections,
-authenticated arm64e and native COFF models remain unsupported. Compiler-emitted
+authenticated arm64e remain unsupported. Compiler-emitted
 C++ initialization wrappers and destructor registrations use the scope below.
 Linux ELF models have the separate scope below.
 
@@ -240,8 +242,42 @@ constructors and thread exit; constructor callbacks reenter native TLS. Native
 constructor retirement tests retain code leases until the workers have joined.
 
 Native exceptions must not escape constructors, destructors or callback entries.
-Additional Darwin pointer/initializer sections, native Windows TLS, OS TLS-module
-registration and cross-image TLS-variable providers remain outside this scope.
+Additional Darwin pointer/initializer sections, native Windows C++ TLS runtime
+initialization/destruction and cross-image TLS-variable providers remain outside
+this Unix C++ scope.
+
+## Native COFF TLS
+
+On Windows amd64/arm64/386, `Options{NativeTLS: true}` accepts `.tls` and `.tls$`
+sections from Clang MSVC/GNU C producers. Dollar suffixes are sorted lexically;
+equal names retain input order. Alignment and initialized/zero bytes form a
+single bounded template. COFF SECREL and ARM64 SECREL_HIGH12A/LOW12A/LOW12L use
+packed module offsets. Ordinary process-address relocations to TLS variables
+are rejected; call a native getter on the owning OS thread instead.
+
+Go generates a minimal per-image PE TLS carrier in a private temporary directory.
+The DLL has no executable section, entry point, imports or TLS callbacks. Windows
+assigns its native TLS module index and provides storage for existing/new OS
+threads. The raw object's `_tls_index` references image-owned storage containing
+that index; i386 `_tls_array` uses the ABI's FS-relative `0x2c` constant. No private
+TEB mutation, loader API or additional C/LLVM build step is used.
+
+The carrier is created after raw relocation and protection validation, before
+user initialization. Symbol/code leases retain it with the image; native
+finalizers run before DLL unloading and temporary-file removal. Failed unloads
+retain ownership for `Close` retry. Multiple images own distinct OS TLS indices.
+The existing raw-address rules apply: stop/join native users or retain code and
+pointer leases before closing a session. OS-owned thread storage is independent
+of the emulated TLS registry and does not expose `LiveValues` counts.
+
+The qualified subset includes scalar/struct values, native-pointer constants,
+64-byte alignment, offsets beyond a page, input/archive extraction, missing
+provider retry, C-created and pinned Go threads that predate DLL loading, new C
+threads, independent modules, global lifecycle and code-lease retirement.
+Native C++ dynamic initialization/destructors, `.CRT$XL*` loader callbacks and
+external TLS definitions remain unqualified. Use the documented emulated mode
+or a complete DLL for those runtime contracts. Templates remain bounded by
+64 MiB and 4096-byte alignment; individual instruction offset ranges also apply.
 
 ## Emulated TLS
 
@@ -272,8 +308,9 @@ callback; native destructor bodies can use retained `abi.NewCallback` entries.
 | COFF / Windows GNU ABI | amd64, arm64, 386 | Clang `__cxa_thread_atexit` |
 | COFF / Windows MSVC ABI | amd64, arm64, 386 | Clang emulated TLS `.CRT$XDU`, `__dyn_tls_on_demand_init` and zero-argument `__tlregdtor` callbacks |
 
-MSVC ABI support requires Clang `-femulated-tls`; it does not load native MSVC TLS
-sections, PE TLS directories or `.CRT$XL*` loader callbacks. `.CRT$XDU` entries
+This emulated MSVC ABI mode requires Clang `-femulated-tls`; native plain C TLS
+uses the separate COFF mode above. Input PE TLS directories and `.CRT$XL*` loader
+callbacks are not executed by the emulated mode. `.CRT$XDU` entries
 are validated and snapshotted separately from global constructors. On the first
 access by a native thread, the runtime marks its image-owned byte guard before
 calling that image's selected thread initializers. Reentry observes that guard;

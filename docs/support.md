@@ -43,6 +43,8 @@ Pure Go inspection does not require a file's CPU to match the host. Execution re
 | LLVM bitcode and text IR | Explicit optional `compiler/llvm` compilation to native objects; explicit modules merge with matching targets/layouts; ordinary/thin/proxy mixed archives retain lazy members; see [coverage and limits](llvm.md) |
 | OMF, D `.ddl`, Go gc `.a` | Not directly loaded |
 
+Native Windows COFF TLS additionally supports the documented plain C `.tls/.tls$` subset with `Options.NativeTLS`, packed SECREL offsets and an OS-owned data-only carrier. See [native COFF TLS](tls.md#native-coff-tls).
+
 Implemented relocation families:
 
 Opt-in ELF dynamic TLS additionally supports amd64 GD/LD and DTP-relative offsets,

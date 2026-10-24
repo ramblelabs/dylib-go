@@ -117,7 +117,7 @@ type section struct {
 	legacyLifecycle       bool   // ELF .ctors/.dtors: reverse entries and -1 sentinels.
 	initOffsets           bool   // Mach-O linker-resolved uint32 image-relative entries.
 	startup               bool   // Executable ELF .init/.fini fragment, joined before invocation.
-	nativeTLS             uint32 // ELF template data (1)/zero fill (2), or Mach-O thread data (0x11), zero fill (0x12), or TLV descriptors (0x13).
+	nativeTLS             uint32 // ELF template data (1)/zero fill (2), or Mach-O thread data (0x11), zero fill (0x12), TLV descriptors (0x13), or COFF template data (0x100).
 }
 
 // section: 0 undefined, -1 absolute, -2 common, -3 ignored/debug, -4 DLL import,
