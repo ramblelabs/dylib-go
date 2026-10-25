@@ -31,6 +31,9 @@ func threadDestructorInputs(t *testing.T, optimization string, nativeMode bool, 
 		}
 		flags = append(flags, "--target="+triple+abi)
 	}
+	if os.Getenv("DYLIB_TEST_TLS_LOCAL") == "1" {
+		source = "testdata/tls_local_objects.cpp"
+	}
 	cc := compiler()
 	if runtime.GOOS == "darwin" && os.Getenv("DYLIB_LLVM_CLANG") != "" {
 		// Apple Clang 17 mixes native and emulated TLS in C++ -O0 output.

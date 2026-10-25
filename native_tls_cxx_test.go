@@ -56,9 +56,13 @@ func TestNativeCXXTLSThreadDestructorInitializerFailure(t *testing.T) {
 
 func TestNativeCXXTLSActiveInitialization(t *testing.T) {
 	needNativeCXXTLS(t)
+	testTLSActiveInitialization(t, true)
+}
+
+func testTLSActiveInitialization(t *testing.T, nativeMode bool) {
 	for _, opt := range []string{"-O0", "-O2"} {
 		t.Run(opt, func(t *testing.T) {
-			object, archive, finalizer := threadDestructorInputs(t, opt, true, "-DDYLIB_TLS_DYNAMIC_INIT")
+			object, archive, finalizer := threadDestructorInputs(t, opt, nativeMode, "-DDYLIB_TLS_DYNAMIC_INIT")
 			for _, kind := range []string{"object", "archive"} {
 				t.Run(kind, func(t *testing.T) {
 					host := nativeThreadLibrary(t, "testdata/emutls_dtor_host.c")
@@ -66,7 +70,7 @@ func TestNativeCXXTLSActiveInitialization(t *testing.T) {
 					if kind == "archive" {
 						input = archive
 					}
-					s := threadDestructorSession(t, host, input, finalizer, true)
+					s := threadDestructorSession(t, host, input, finalizer, nativeMode)
 					step, err := s.Resolve("tls_step")
 					if err != nil {
 						t.Fatal(err)

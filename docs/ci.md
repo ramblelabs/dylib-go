@@ -290,3 +290,13 @@ images run both O0/O2 object and archive forms, require both options and verify
 independent value state and destruction before global finalization. Native MSVC cases additionally verify a shared native guard across objects,
 initializer table snapshots, constructor reentry and active-constructor close
 retry. All three guard getter entries match independent assembly.
+
+Function-local C++ TLS uses the same discovered Go/llgo test commands. Native
+and emulated modes run O0/O2 objects/archives on Linux/macOS and both Windows
+GNU/MSVC ABIs. Separate entry calls verify lazy construction independently,
+including reversed first-use order and exact destructor events. Large aligned
+objects check double/self-pointer fields and cross-page zero fill at thread
+exit. Foreign-thread Go callbacks and constructor reentry run in the libffi
+suite; independent Windows ARM64 Go also executes them. Eleven-target metadata
+checks distinguish function-local MSVC exit registrations from module-wide
+initialization guards/tables. No hand-maintained CI test list is required.
