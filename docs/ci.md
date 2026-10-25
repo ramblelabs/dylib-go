@@ -300,3 +300,11 @@ exit. Foreign-thread Go callbacks and constructor reentry run in the libffi
 suite; independent Windows ARM64 Go also executes them. Eleven-target metadata
 checks distinguish function-local MSVC exit registrations from module-wide
 initialization guards/tables. No hand-maintained CI test list is required.
+
+Mach-O coalescing tests use the discovered test commands without additional
+workflow entries. Every native host parses both target architectures, including
+large multi-atom sections and malformed boundaries. macOS Go/llgo executes
+O0/O2 objects/archives, strong/weak/common ordering, canonical pointer and
+subtractor fixups, poison-member laziness, retry, lifecycle and unwind rejection.
+Independent Apple-linked executables run the same probes with both nlist and
+section-relative encodings; no library loader participates in those controls.

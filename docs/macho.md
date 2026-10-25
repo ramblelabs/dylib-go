@@ -1,4 +1,52 @@
-# Mach-O aliases, pointers, and stubs
+# Mach-O coalescing, aliases, pointers, and stubs
+
+## Coalesced weak atoms
+
+Raw macOS amd64/arm64 objects support bounded `S_COALESCED` weak atoms in
+objects and lazy archives. `MH_SUBSECTIONS_VIA_SYMBOLS` and non-alternate nlist
+boundaries identify independent atoms; a single whole-section atom does not
+require that flag. Local aliases at a boundary and local `N_ALT_ENTRY` names
+inside an atom share its identity. Each coalescible atom needs one public weak
+definition. Multiple public names at a boundary, public alternate entries,
+zero-size weak atoms and ambiguous boundaries remain unsupported.
+
+Among selected definitions, a strong definition wins over a weak one and the
+first selected weak definition wins a weak/weak tie. Mach-O real definitions,
+including weak ones, win over tentative common storage in either input order.
+ELF/COFF common selection is unchanged. Explicit host definitions retain the
+library's host/object conflict rule; they do not silently interpose a selected
+weak object definition.
+
+Selection drops a losing atom's relocations before dependency discovery, so
+its missing providers do not trigger archive extraction. Surviving private and
+weak atoms retain their fixups. Original section/symbol indices and staged
+inputs remain stable across failed-link retries. Entirely discarded sections
+need no storage; partially retained sections keep dead bytes as unused padding.
+This is coalescing, not general reachability-based dead stripping.
+
+Nlist references, section-relative pointer fixups, local alternate entries and
+explicit SUBTRACTOR pairs bind to the winning identity and interior offset.
+AMD64 local SIGNED/1/2/4 fields include their trailing immediate-byte bias.
+One-past pointers to a final weak atom are supported. Interior local GOT and
+indirect-table aliases require additional handling. Constants already resolved
+by the assembler remain numeric constants; missing relocations cannot be
+reconstructed from their contents.
+
+Ordinary initialization/finalization arrays remain independent sections and
+call their selected functions. Discarding coalesced code from an input that
+still carries DWARF/compact unwind metadata is rejected: associated-record
+pruning needs separate support. Default loading discards that optional metadata
+and supports the tested nonthrowing leaf calls. Weak bodies in ordinary regular
+sections still use normal symbol selection without atom-fixup discard.
+
+Tests cover both Mach-O architectures on every native CI host and execute
+O0/O2 objects/archives with Go and llgo on macOS. They check strong/weak/common
+selection, reversed order, private/local/one-past pointer identity, explicit
+subtractor pairs, lazy poison dependencies, retry, lifecycle and unwind limits.
+Apple system-linked executables use the same probes, including equivalent
+section-relative encodings. Apple `ld -dead_strip` is the complete native
+control: LLVM 22 LLD retains the original location for the tested named local
+alternate-entry pointer, while Apple rebinds it to the selected atom.
 
 ## Forwarding aliases
 
@@ -32,10 +80,11 @@ Tests compile both target formats on every CI host. Native macOS Go and llgo tes
 
 Short/padded-stub tests compile two adjacent entries at four widths per architecture. Native macOS Go/llgo tests execute objects, lazy archives and retained symbol providers at O0/O2, including 24-byte indirect results and enough integer/floating arguments to exhaust registers. Portable tests check distant-target islands, full addresses, padding, entry boundaries and malformed instruction alignment.
 
-General coalesced sections, stubs smaller than one branch instruction, authenticated arm64e symbols, TLS forms beyond [plain C native TLV](tls.md#native-mach-o-tlv), and language runtime registration still require additional support. Complete `.dylib` images continue to use the OS loader.
+General coalescing beyond the bounded atoms above, stubs smaller than one branch instruction, authenticated arm64e symbols, TLS forms beyond [plain C native TLV](tls.md#native-mach-o-tlv), and language runtime registration still require additional support. Complete `.dylib` images continue to use the OS loader.
 
 ## Format references
 
+- [LLVM subsection parsing](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/lld/MachO/InputFiles.cpp): symbol boundaries, `MH_SUBSECTIONS_VIA_SYMBOLS`, and `N_ALT_ENTRY`.
 - [Apple ld64 Mach-O parser](https://github.com/apple-oss-distributions/ld64/blob/main/src/ld/parsers/macho_relocatable_file.cpp): `appendAliasAtoms` decodes external `N_INDR` records and their target names.
 - [LLVM alias-symbol tests](https://github.com/llvm/llvm-project/blob/main/lld/test/MachO/alias-symbols.s): alias/private-external cases and the difference between ld64's strong alias definitions and LLD's inherited target strength.
 - [LLVM Mach-O definitions](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/llvm/include/llvm/BinaryFormat/MachO.h): symbol flags and structures.

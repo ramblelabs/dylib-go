@@ -138,6 +138,9 @@ func coalesceObjects(inputs []*object) ([]*object, error) {
 		}
 		o.relocs = relocs
 	}
+	if err := coalesceMachOAtoms(objects); err != nil {
+		return nil, err
+	}
 	return objects, nil
 }
 
