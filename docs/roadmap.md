@@ -95,6 +95,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Plain C native COFF TLS through Go-generated minimal PE carriers, packed SECREL offsets, MSVC/GNU producers, existing/new threads, per-image indices, lifecycle and code-lease retirement.
 - [x] Native Windows Clang GNU ABI C++ TLS on amd64/arm64/386, compiler-owned guards/wrappers, image-owned thread-exit registration, existing/new C threads, callback reentry and pending/active retirement.
 - [x] Native Windows Clang MSVC ABI C++ TLS, an image-owned native guard, Go-generated guard getters, on-demand thread initializer snapshots, native/emulated mixing, constructor reentry and active-constructor retention.
+- [x] Function-local nonthrowing C++ TLS in native/emulated modes, independent lazy entries, per-variable guards, large aligned values, nested destruction, constructor callback reentry and code-lease retirement on all current native targets.
 - [ ] Remaining ELF TLS models, additional Darwin TLS initialization/pointer models and Windows fiber qualification.
 - [x] Explicit packed record values through compiler-validated C bridges for Go/llgo, ordinary transport records, nested arrays, native pointers, factories and variadic calls without libffi.
 - [x] Explicit packed non-bitfield members through validated C bridges, including arrays, nested records, native pointers/factories, concrete variadic calls and packing combined with explicit member alignment.

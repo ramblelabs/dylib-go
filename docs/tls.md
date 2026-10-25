@@ -208,7 +208,8 @@ C++ ABI thread-exit registrations. It does not enable emulated descriptors or
 the emulated address helper; mixed native/emulated inputs still require both
 options. The native test fixtures use Clang C++17 `-fno-emulated-tls`,
 `-fno-exceptions` and `-fno-rtti`; initialized values, compiler-generated
-nonthrowing per-translation-unit wrappers and nonthrowing destructors are
+nonthrowing per-translation-unit wrappers, function-local `thread_local` objects
+and nonthrowing destructors are
 qualified separately from ordinary C values.
 
 | Native object ABI | Architecture | Image-owned thread-exit hooks |
@@ -249,6 +250,31 @@ providers remain outside
 this C++ scope. Windows GNU tests also create native C threads before loading the
 carrier and verify destructor receivers and nested registrations during FLS exit,
 before Windows releases that thread's native TLS storage.
+
+## Function-local C++ TLS
+
+Nonthrowing function-local `static thread_local` objects are qualified separately
+from namespace-scope TLS on the documented native and emulated targets. Clang
+retains each variable's own guard and constructor; resolving an entry or reading
+an independent constant TLS value does not construct its local objects. Separate
+function entries construct their own values on first use, with destructors in
+reverse construction order. Both first-use orders are tested.
+
+Windows MSVC local objects register plain `__tlregdtor` entries without requiring
+a module-wide `__tls_guard` or `.CRT$XDU` list. GNU and Darwin local objects use
+the existing context destructor hooks. Local values, their compiler guards and
+all callbacks remain image-owned; close/retry follows the same code-lease and
+pending-destructor rules above. Keep code leases through local constructors:
+these compiler-generated paths do not enter the MSVC module initializer's
+active-constructor counter. Recursive construction of the same object and
+exceptions crossing native/Go boundaries remain outside the qualified subset.
+
+The fixtures use 64-byte-aligned objects with zero-filled data beyond a page,
+double fields and self pointers checked during destruction. O0/O2 objects and
+lazy archives cover per-thread/image identity, native C threads, constructor
+callback reentry, reverse/nested destruction, failed global initialization,
+late thread/global registrations and owner retirement. Every qualified native
+job also verifies native/emulated compiler output for eleven target triples.
 
 ## Native COFF TLS
 

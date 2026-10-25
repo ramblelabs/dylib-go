@@ -43,7 +43,7 @@ Pure Go inspection does not require a file's CPU to match the host. Execution re
 | LLVM bitcode and text IR | Explicit optional `compiler/llvm` compilation to native objects; explicit modules merge with matching targets/layouts; ordinary/thin/proxy mixed archives retain lazy members; see [coverage and limits](llvm.md) |
 | OMF, D `.ddl`, Go gc `.a` | Not directly loaded |
 
-Native Windows COFF TLS additionally supports the documented C `.tls/.tls$` subset and Clang GNU/MSVC ABI nonthrowing C++ initialization/thread-exit registration with `Options.NativeTLS`, packed SECREL offsets and an OS-owned minimal carrier. See [native COFF TLS](tls.md#native-coff-tls).
+Native Windows COFF TLS additionally supports the documented C `.tls/.tls$` subset and Clang GNU/MSVC ABI nonthrowing C++ namespace/function-local initialization and thread-exit registration with `Options.NativeTLS`, packed SECREL offsets and an OS-owned minimal carrier. See [native COFF TLS](tls.md#native-coff-tls).
 
 Implemented relocation families:
 
