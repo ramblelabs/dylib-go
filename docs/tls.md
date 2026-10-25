@@ -10,7 +10,7 @@ libraries continue to use their OS loader's TLS support.
 | Native Mach-O TLV | `Options.NativeTLS` | C values and documented C++ wrappers, macOS amd64/arm64; initialized, zero-filled and aligned values |
 | Clang emulated TLS | `Options.EmulatedTLS` | Linux/macOS/Windows targets below, including documented C++ initialization/destruction |
 | Native ELF dynamic TLS | `Options.NativeTLS` | C values and documented C++ wrappers, Linux amd64/386 GD/LD/TLSDESC and arm64 GD/LD/TLSDESC |
-| Native COFF TLS | `Options.NativeTLS` | Windows amd64/arm64/386: constant/zero/aligned C TLS from Clang MSVC/GNU, and documented Clang GNU C++ wrappers/thread-exit hooks |
+| Native COFF TLS | `Options.NativeTLS` | Windows amd64/arm64/386: constant/zero/aligned C TLS from Clang MSVC/GNU, and documented Clang GNU/MSVC C++ initialization and thread-exit hooks |
 | Native ELF static TLS, other Darwin models | None | Unsupported; use emulated TLS or a complete OS library |
 
 ## Native Mach-O TLV
@@ -216,6 +216,7 @@ qualified separately from ordinary C values.
 | ELF / Linux | amd64, arm64, 386 | `__cxa_thread_atexit`, `__cxa_thread_atexit_impl` |
 | Mach-O / macOS | amd64, arm64 | `_tlv_atexit`; explicit C++ ABI registration uses the same owner |
 | COFF / Windows GNU ABI | amd64, arm64, 386 | Clang `__cxa_thread_atexit`; values and guards remain in OS-owned native TLS |
+| COFF / Windows MSVC ABI | amd64, arm64, 386 | Clang `.CRT$XDU`, `__dyn_tls_on_demand_init` and `__tlregdtor`, with an image-owned native guard |
 
 Compiler-generated wrappers retain their original native guard variables and
 initialization order; Go does not reproduce C++ initialization logic. Register
@@ -243,8 +244,8 @@ constructors and thread exit; constructor callbacks reenter native TLS. Native
 constructor retirement tests retain code leases until the workers have joined.
 
 Native exceptions must not escape constructors, destructors or callback entries.
-Additional Darwin pointer/initializer sections, native Windows MSVC C++ TLS
-initialization/destruction and cross-image TLS-variable providers remain outside
+Additional Darwin pointer/initializer sections and cross-image TLS-variable
+providers remain outside
 this C++ scope. Windows GNU tests also create native C threads before loading the
 carrier and verify destructor receivers and nested registrations during FLS exit,
 before Windows releases that thread's native TLS storage.
@@ -277,12 +278,22 @@ The qualified subset includes scalar/struct values, native-pointer constants,
 64-byte alignment, offsets beyond a page, input/archive extraction, missing
 provider retry, C-created and pinned Go threads that predate DLL loading, new C
 threads, independent modules, global lifecycle and code-lease retirement.
-Native GNU C++ nonthrowing wrapper initialization and image-owned thread-exit
-registrations use the shared C++ scope above. MSVC native dynamic TLS helpers,
-`.CRT$XL*` loader callbacks and external TLS definitions remain unqualified. Use
+Native GNU/MSVC C++ nonthrowing initialization and image-owned thread-exit
+registrations use the shared C++ scope above. `.CRT$XL*` loader callbacks, Windows
+fibers and external TLS definitions remain unqualified. Use
 the documented emulated mode
 or a complete DLL for those runtime contracts. Templates remain bounded by
 64 MiB and 4096-byte alignment; individual instruction offset ranges also apply.
+
+MSVC native C++ uses a private one-byte `__tls_guard` in the native module
+template. Input definitions, aliases and imported guards are rejected. A
+Go-generated C entry reads its address using the ordinary Windows TLS ABI on
+amd64/arm64/386. Constructors execute from a validated snapshot of `.CRT$XDU`
+outside DLL entry points. The native helper marks native and emulated guards
+before calling constructors, so mixed MSVC modes share one initialization pass
+and permit same-thread constructor reentry. Active constructors and pending or
+active destructors retain image ownership for `Close` retry. This does not
+add an emulated value descriptor for the native guard.
 
 ## Emulated TLS
 

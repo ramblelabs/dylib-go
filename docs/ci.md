@@ -142,7 +142,7 @@ Pure Go module tests cover provider ordering, concurrent close failure, failed l
 
 Native close-retry tests use a deterministic unregister-validation failure on every host. They verify retirement, active leases, concurrent/sequential error propagation, retained mappings/OS libraries/provider leases/TLS values, native finalizers running once and successful recovery. POSIX also forces a safe mapper slice-validation error to verify image-release retry. These run in Go/llgo, including independent Go on Windows ARM64.
 
-Native C++ TLS fixtures execute on Linux amd64/arm64/386, macOS amd64/arm64 and Windows amd64/arm64/386 (Clang GNU ABI) with `NativeTLS` alone. They share the emulated TLS destructor suite: O0/O2 object/archive construction/destruction, isolation, recursive/late registrations, budgets, failed initialization cleanup, pending/active retirement, Go callbacks during constructor/thread exit and native TLS reentry. Constructor retirement tests keep code leases until workers join. Cross-target tests verify native code generation and option isolation rejects emulated address helpers/descriptors.
+Native C++ TLS fixtures execute on Linux amd64/arm64/386, macOS amd64/arm64 and Windows amd64/arm64/386 (Clang GNU/MSVC ABI) with `NativeTLS` alone. They share the emulated TLS destructor suite: O0/O2 object/archive construction/destruction, isolation, recursive/late registrations, budgets, failed initialization cleanup, pending/active retirement, Go callbacks during constructor/thread exit and native TLS reentry. Constructor retirement tests keep code leases until workers join. Cross-target tests verify native code generation and option isolation rejects emulated address helpers/descriptors.
 
 Native ELF TLS fixtures execute Clang O0/O2 object/archive calls on Linux amd64/arm64/386, plus GCC O0/O2 calls. They reuse the native value/thread/lifecycle/retirement suite, compare ordinary and descriptor entries with independent assembly and check AArch64 descriptor register preservation. Portable tests reject malformed runtime/layout/relocation inputs; native tests exercise explicit dynamic models and reject initial/local-exec TLS.
 
@@ -287,5 +287,6 @@ Go on Windows ARM64. CLI object/archive tests use the same GNU native ABI and
 verify current-thread destruction before global finalizers. MSVC emulated C++
 tests retain their existing producer. Mixed GNU-native/GNU-or-MSVC-emulated C++
 images run both O0/O2 object and archive forms, require both options and verify
-independent value state and destruction before global finalization. Native MSVC
-helpers remain unqualified.
+independent value state and destruction before global finalization. Native MSVC cases additionally verify a shared native guard across objects,
+initializer table snapshots, constructor reentry and active-constructor close
+retry. All three guard getter entries match independent assembly.

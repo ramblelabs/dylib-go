@@ -40,10 +40,11 @@ func checkTLSRuntime(objects []*object, opts Options) (bool, error) {
 	enabled := opts.EmulatedTLS
 	needed := false
 	for _, o := range objects {
+		nativeMSVC := opts.NativeTLS && usesMSVCNativeTLS([]*object{o})
 		for _, sec := range o.sections {
 			if sec != nil && sec.lifecycle == lifecycleThreadInit {
 				needed = true
-				if !enabled {
+				if !enabled && !nativeMSVC {
 					return false, fmt.Errorf("%s: emulated TLS requires Options.EmulatedTLS", o.info.Name)
 				}
 			}
@@ -55,7 +56,8 @@ func checkTLSRuntime(objects []*object, opts Options) (bool, error) {
 			}
 			needed = true
 			nativeThreadHook := opts.NativeTLS && (o.info.Format == "ELF" || o.info.Format == "Mach-O" || o.info.Format == "COFF") && emulatedTLSThreadHelper(name)
-			if !enabled && !nativeThreadHook {
+			nativeMSVCHook := opts.NativeTLS && o.info.OS == "windows" && o.info.Format == "COFF" && emulatedTLSMSVCHelper(name) && (name == emulatedTLSMSVCExit || nativeMSVC)
+			if !enabled && !nativeThreadHook && !nativeMSVCHook {
 				return false, fmt.Errorf("%s: TLS runtime requires Options.EmulatedTLS, or Options.NativeTLS for native thread-exit hooks", o.info.Name)
 			}
 			if s.imported != nil || s.name != name && strings.HasPrefix(name, emulatedTLSPrefix) || name == emulatedTLSHelper && (s.section != 0 || s.alias != nil) {

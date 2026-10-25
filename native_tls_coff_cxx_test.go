@@ -10,13 +10,17 @@ import (
 )
 
 func TestNativeCOFFCXXTLSMixedModes(t *testing.T) {
+	testCOFFCXXTLSMixedModes(t, "gnu")
+}
+
+func testCOFFCXXTLSMixedModes(t *testing.T, nativeDialect string) {
 	needCOFFNativeTLS(t)
 	for _, dialect := range []string{"gnu", "msvc"} {
 		for _, opt := range []string{"-O0", "-O2"} {
 			t.Run(dialect+"/"+opt, func(t *testing.T) {
 				dir := t.TempDir()
 				base := []string{"-std=c++17", "-fno-exceptions", "-fno-rtti"}
-				nativeFlags := append(coffTLSFlags("gnu", opt), base...)
+				nativeFlags := append(coffTLSFlags(nativeDialect, opt), base...)
 				nativeFlags = append(nativeFlags, "-DValue=NativeValue", "-DCheck=NativeCheck", "-Dcli_cxx_tls_add=native_tls_add")
 				emulatedFlags := append(coffTLSFlags(dialect, opt), base...)
 				emulatedFlags = append(emulatedFlags, "-femulated-tls", "-DValue=EmulatedValue", "-DCheck=EmulatedCheck", "-Dcli_cxx_tls_add=emulated_tls_add")

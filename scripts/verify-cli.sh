@@ -151,11 +151,6 @@ for mode in emulated native; do
       echo "$compiler CLI TLS $mode $opt ${tls_input##*.}: PASS"
     done
     cxx_tls_cflags=("${tls_cflags[@]}")
-    if [[ "$mode" == native && ( "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ) ]]; then
-      # Native Windows C++ currently uses the GNU thread-exit ABI. The plain C
-      # native checks above and MSVC emulated C++ checks retain their producers.
-      cxx_tls_cflags=(--target="${triple%-pc-windows-msvc}-w64-windows-gnu" -ffreestanding)
-    fi
     cxx_tls_object="$cli_dir/cxx-$mode$opt.o"
     cxx_tls_archive="$cli_dir/cxx-$mode$opt.a"
     "$tls_cxx" ${native_cflags[@]+"${native_cflags[@]}"} "${cxx_tls_cflags[@]}" "$tls_codegen" "$opt" -std=c++17 -fno-exceptions -fno-rtti -fno-stack-protector -c testdata/cli_tls.cpp -o "$cxx_tls_object"
@@ -166,6 +161,15 @@ for mode in emulated native; do
       expect 42 "-$mode-tls" 'func cli_cxx_tls_add(int32,int32)int32' 20 20 "$tls_input"
       echo "$compiler CLI C++ TLS $mode $opt ${tls_input##*.}: PASS"
     done
+    if [[ "$mode" == native && ( "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ) ]]; then
+      gnu_object="$cli_dir/cxx-gnu$opt.o"
+      "$tls_cxx" ${native_cflags[@]+"${native_cflags[@]}"} --target="${triple%-pc-windows-msvc}-w64-windows-gnu" -ffreestanding "$tls_codegen" "$opt" -std=c++17 -fno-exceptions -fno-rtti -fno-stack-protector -c testdata/cli_tls.cpp -o "$gnu_object"
+      "${AR:-ar}" rcs "$cli_dir/cxx-gnu$opt.a" "$gnu_object"
+      for tls_input in "$gnu_object" "$cli_dir/cxx-gnu$opt.a"; do
+        expect 42 -native-tls 'func cli_cxx_tls_add(int32,int32)int32' 20 20 "$tls_input"
+        echo "$compiler CLI C++ TLS native GNU $opt ${tls_input##*.}: PASS"
+      done
+    fi
     if [[ "$mode" == native ]]; then
       mixed_object="$cli_dir/mixed$opt.o"
       "${CLANG:-clang}" ${native_cflags[@]+"${native_cflags[@]}"} "${tls_cflags[@]}" -femulated-tls "$opt" -Dcli_tls_add=cli_emutls_add -Dcli_tls_pair=cli_emutls_pair -c testdata/cli_tls.c -o "$mixed_object"

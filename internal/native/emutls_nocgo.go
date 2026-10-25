@@ -21,3 +21,7 @@ func (*EmulatedTLS) SetThreadInitializers(uintptr, []uintptr) error {
 	return fmt.Errorf("emulated TLS requires cgo or llgo")
 }
 func (*EmulatedTLS) DrainThreadDestructors() (uint64, bool) { return 0, false }
+
+func (*EmulatedTLS) SetNativeThreadGuard(uintptr) error {
+	return fmt.Errorf("native TLS requires cgo or llgo")
+}
