@@ -16,6 +16,7 @@ _coal_keep:
 .quad 13
 .globl _coal_record
 .weak_definition _coal_record
+.p2align 4
 _coal_record:
 #ifdef DYLIB_COAL_VALUE
 .quad DYLIB_COAL_VALUE
@@ -26,8 +27,10 @@ _coal_record:
 lcoal_middle:
 Lcoal_middle:
 .quad 9
+#ifndef DYLIB_COAL_NO_NAMED_END
 .alt_entry lcoal_end
 lcoal_end:
+#endif
 Lcoal_end:
 
 .section __DATA,__coal_drop,coalesced
@@ -42,7 +45,7 @@ _coal_drop:
 #endif
 
 .data
-.p2align 3
+.p2align 4
 #ifndef DYLIB_COAL_ANCHOR
 #define DYLIB_COAL_ANCHOR _coal_anchor
 #endif
@@ -56,7 +59,9 @@ DYLIB_COAL_ANCHOR:
 .quad Lcoal_end
 .quad lcoal_private
 .quad _coal_drop
+#ifndef DYLIB_COAL_NO_NAMED_END
 .quad lcoal_end
+#endif
 .globl _coal_delta, _coal_reverse
 .weak_definition _coal_delta, _coal_reverse
 _coal_delta:

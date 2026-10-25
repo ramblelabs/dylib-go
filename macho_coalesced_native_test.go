@@ -45,6 +45,8 @@ func TestNativeMachOCoalescedAtoms(t *testing.T) {
 			local := machoCoalescedLocalFile(t, weak)
 			strong, _ := machoCoalescedFixture(t, target, "macho_coalesced_strong.c", opt)
 			probe, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt)
+			legacy, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_NO_NAMED_END")
+			legacyProbe, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt, "-DDYLIB_COAL_NO_NAMED_END")
 			first, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=7")
 			second, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=33", "-DDYLIB_COAL_ANCHOR=_coal_anchor_second")
 			probe7, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt, "-DDYLIB_COAL_VALUE=7", "-DDYLIB_COAL_TWO_ANCHORS")
@@ -67,6 +69,7 @@ func TestNativeMachOCoalescedAtoms(t *testing.T) {
 				{"strong_archive", []string{probe, strong, archive}, false},
 				{"local_objects", []string{local, strong, probe}, false},
 				{"local_archive", []string{probe, strong, localArchive}, false},
+				{"unnamed_end", []string{legacy, strong, legacyProbe}, false},
 				{"weak_first", []string{first, second, probe7}, true},
 				{"weak_second", []string{second, first, probe33}, true},
 				{"weak_archive", []string{probe7, weakArchive}, true},
@@ -211,6 +214,7 @@ func TestNativeMachOCoalescedSystemControl(t *testing.T) {
 	for _, opt := range []string{"-O0", "-O2"} {
 		t.Run(opt, func(t *testing.T) {
 			weak, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt)
+			legacy, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_NO_NAMED_END")
 			local := machoCoalescedLocalFile(t, weak)
 			strong, _ := machoCoalescedFixture(t, target, "macho_coalesced_strong.c", opt)
 			resolved, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=7")
@@ -224,6 +228,8 @@ func TestNativeMachOCoalescedSystemControl(t *testing.T) {
 				{"strong_first", []string{strong, weak}, nil},
 				{"local_weak_first", []string{local, strong}, nil},
 				{"local_strong_first", []string{strong, local}, nil},
+				{"unnamed_weak_first", []string{legacy, strong}, []string{"-DDYLIB_COAL_NO_NAMED_END"}},
+				{"unnamed_strong_first", []string{strong, legacy}, []string{"-DDYLIB_COAL_NO_NAMED_END"}},
 				{"common_first", []string{common, resolved}, []string{"-DDYLIB_COAL_VALUE=7"}},
 				{"common_second", []string{resolved, common}, []string{"-DDYLIB_COAL_VALUE=7"}},
 			} {
@@ -233,12 +239,28 @@ func TestNativeMachOCoalescedSystemControl(t *testing.T) {
 					args = append(args, tc.flags...)
 					args = append(args, tc.inputs...)
 					command(t, compiler(), append(args, "-o", exe)...)
-					if output, err := exec.Command(exe).CombinedOutput(); err != nil {
-						trace := exe + "-trace"
-						command(t, compiler(), append(args, "-DDYLIB_COAL_TRACE", "-o", trace)...)
-						detail, traceErr := exec.Command(trace).CombinedOutput()
-						t.Fatalf("Apple control: %v: %s; diagnostic build: %v:\n%s", err, output, traceErr, detail)
+					b, err := readFile(exe)
+					if err != nil {
+						t.Fatal(err)
 					}
+					linked := machoPointerMetadata(t, b)
+					found := 0
+					alignment := uint64(8)
+					if runtime.GOARCH == "amd64" {
+						alignment = 16 // Darwin AMD64 aligns these global arrays for vector loads.
+					}
+					for _, sym := range linked.Symtab.Syms {
+						if sym.Name == "_coal_anchor" || sym.Name == "_coal_record" {
+							if sym.Value%alignment != 0 {
+								t.Fatalf("native C array %s lacks %d-byte alignment", sym.Name, alignment)
+							}
+							found++
+						}
+					}
+					if found != 2 {
+						t.Fatal("native array alignment controls missing", found)
+					}
+					command(t, exe)
 				})
 			}
 		})

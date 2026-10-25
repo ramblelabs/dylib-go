@@ -177,6 +177,14 @@ func TestMachOCoalescedAtoms(t *testing.T) {
 			if len(weak.machoAtoms) != 6 {
 				t.Fatal("genuine multi-atom input missing", weak.machoAtoms)
 			}
+			for _, s := range weak.symbols {
+				if s.name == "coal_anchor" || s.name == "coal_record" {
+					sec := weak.sections[s.section]
+					if sec.align < 16 || (sec.original+s.value)%16 != 0 {
+						t.Fatal("assembly array violates native C alignment", s.name)
+					}
+				}
+			}
 			relocs, symbols := append([]relocation(nil), weak.relocs...), append([]symbol(nil), weak.symbols...)
 			for _, order := range []string{"weak_first", "strong_first"} {
 				t.Run(order, func(t *testing.T) {
