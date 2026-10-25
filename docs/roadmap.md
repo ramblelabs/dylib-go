@@ -66,6 +66,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] AMD64 COFF far conditional tail branches, executable opcode checks and absolute addend/bias targets shared with call/jump stubs.
 - [x] Mach-O short/padded symbol stubs with image-owned distant-target islands, adjacent entries and native scalar/indirect-record calls through objects, archives and retained providers.
 - [x] Bounded Mach-O `S_COALESCED` weak atoms, losing-fixup discard, canonical local/alternate/one-past references, explicit subtractors, real weak/common priority and object/archive retry with native Apple linker controls.
+- [x] Mach-O coalesced interior local aliases through GOT, indirect pointers and regenerated stubs, retaining the selected field/function offset across object/archive selection and provider leases.
 - [ ] Remaining relocations on existing targets; Mach-O general coalescing and authenticated stubs.
 - [x] Legacy ELF `.ctors/.dtors` pointer tables, priorities, sentinels, and mixed modern-array execution.
 - [x] COFF integer-returning CRT initializers, permanent failure state, and owned exit-registration cleanup.

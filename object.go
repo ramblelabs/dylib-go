@@ -154,6 +154,8 @@ type relocation struct {
 	local    bool // Mach-O section ordinal instead of symbol-table index.
 	implicit bool // ELF REL takes its addend from the relocated word.
 	pair     int  // Mach-O subtractor: minuend; -1 otherwise.
+
+	targetOffset uint64 // Mach-O atom offset applied before GOT/indirect binding.
 }
 
 func parse(name string, b []byte) (*file, error) {

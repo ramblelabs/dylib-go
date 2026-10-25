@@ -201,8 +201,8 @@ func TestNativeMachOCoalescedUnwind(t *testing.T) {
 	}
 }
 
-func TestNativeMachOCoalescedSystemControl(t *testing.T) {
-	target := needMachOCoalescedNative(t)
+func machoCoalescedSDK(t *testing.T) string {
+	t.Helper()
 	sdk := os.Getenv("SDKROOT")
 	if sdk == "" {
 		b, err := exec.Command("xcrun", "--sdk", "macosx", "--show-sdk-path").CombinedOutput()
@@ -211,6 +211,12 @@ func TestNativeMachOCoalescedSystemControl(t *testing.T) {
 		}
 		sdk = strings.TrimSpace(string(b))
 	}
+	return sdk
+}
+
+func TestNativeMachOCoalescedSystemControl(t *testing.T) {
+	target := needMachOCoalescedNative(t)
+	sdk := machoCoalescedSDK(t)
 	for _, opt := range []string{"-O0", "-O2"} {
 		t.Run(opt, func(t *testing.T) {
 			weak, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt)

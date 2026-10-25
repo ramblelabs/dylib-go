@@ -126,6 +126,11 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 				if atom == nil || *operand.index == atom.key {
 					continue
 				}
+				if operand.index == &r.symbol && r.pair < 0 && machoAtomAddressRelocation(o, r) {
+					r.targetOffset += s.value - atom.start
+					*operand.index = atom.key
+					continue
+				}
 				if s.value != atom.start && !machoAtomOffsetRelocation(o, r) {
 					return fmt.Errorf("unsupported alternate-entry relocation %d", r.typ)
 				}
@@ -160,6 +165,19 @@ func machoAtomOffsetRelocation(o *object, r relocation) bool {
 		return r.typ == 1 || r.typ == 2 || r.typ >= 6 && r.typ <= 8
 	}
 	return o.info.Arch == "arm64" && r.typ >= 2 && r.typ <= 4
+}
+
+// These fixups first take the address of a symbol's GOT cell or regenerate an
+// indirect entry. An interior atom offset belongs to the cell's target, not to
+// the relocation field or the address of the cell itself.
+func machoAtomAddressRelocation(o *object, r relocation) bool {
+	if r.typ == machoPointerFixup || r.typ == machoStubFixup {
+		return true
+	}
+	if o.info.Arch == "amd64" {
+		return r.typ == 3 || r.typ == 4
+	}
+	return o.info.Arch == "arm64" && r.typ >= 5 && r.typ <= 7
 }
 
 func normalizeMachOLocalAtom(o *object, r relocation, atoms []machoCoalescedAtom) (relocation, error) {
