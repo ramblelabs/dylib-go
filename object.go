@@ -95,6 +95,7 @@ type object struct {
 	symbols                 []symbol   // Original symbol table indices.
 	relocs                  []relocation
 	groups                  []sectionGroup
+	machoAtoms              []machoCoalescedAtom // Proven weak subsections; immutable across link attempts.
 }
 
 // ELF COMDAT groups and COFF COMDAT sections share selection and discard rules.

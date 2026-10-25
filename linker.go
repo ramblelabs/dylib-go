@@ -324,6 +324,17 @@ func definitions(objs []*object) (map[string]definition, error) {
 			if old.section == -2 && v.section == -2 {
 				continue
 			} // Merged by layout.
+			// Mach-O real definitions, including weak ones, beat tentative
+			// common storage. ELF/COFF retain their existing common policy.
+			if o.info.Format == "Mach-O" && d.o.info.Format == "Mach-O" {
+				if v.section == -2 {
+					continue
+				}
+				if old.section == -2 {
+					m[v.name] = definition{o, i}
+					continue
+				}
+			}
 			if !old.weak && old.section != -2 && !v.weak && v.section != -2 {
 				return nil, fmt.Errorf("duplicate strong symbol %s (%s, %s)", v.name, d.o.info.Name, o.info.Name)
 			}

@@ -436,10 +436,11 @@ func (im *image) relocMachO(o *object, r relocation, b []byte, s, p uintptr) err
 			d := int64(s) + add - int64(p) - bias
 			if d < math.MinInt32 || d > math.MaxInt32 {
 				var e error
-				s, e = im.stub(s, "amd64")
+				s, e = im.stub(uintptr(int64(s)+add), "amd64")
 				if e != nil {
 					return e
 				}
+				add = 0 // The island already targets the selected interior address.
 			}
 		case 3, 4:
 			var e error

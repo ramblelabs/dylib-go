@@ -133,9 +133,6 @@ func parseMachO(name string, b []byte) (*file, error) {
 		if t == 0x14 || t == 0x15 {
 			o.unsupported("TLS section " + s.Name)
 		}
-		if t == 0xb && s.Name != "__eh_frame" {
-			o.unsupported("Mach-O coalesced section " + s.Name)
-		}
 		if strings.HasPrefix(s.Name, "__objc_") || strings.HasPrefix(s.Name, "__swift5_") {
 			o.unsupported("language runtime registration: " + s.Name)
 		}
@@ -202,6 +199,9 @@ func parseMachO(name string, b []byte) (*file, error) {
 	}
 	if err := bindMachOIndirectTables(o, f); err != nil {
 		return nil, err
+	}
+	if err := configureMachOCoalescing(o, f); err != nil {
+		o.unsupported("Mach-O coalesced atoms: " + err.Error())
 	}
 	return finish(o), nil
 }
