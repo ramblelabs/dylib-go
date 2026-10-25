@@ -15,6 +15,12 @@ import (
 // Exercise the native runtime with each host's C ABI as well as the real MSVC
 // object tests below. No Windows image execution is claimed on other hosts.
 func TestNativeMSVCEmulatedTLSHelpers(t *testing.T) {
+	for _, mode := range []string{"emulated", "native", "mixed"} {
+		t.Run(mode, func(t *testing.T) { testMSVCTLSHelpers(t, mode != "native", mode != "emulated") })
+	}
+}
+
+func testMSVCTLSHelpers(t *testing.T, emulated, nativeMode bool) {
 	needNative(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -63,11 +69,24 @@ func TestNativeMSVCEmulatedTLSHelpers(t *testing.T) {
 	putTLSWord(descriptor, 0, 1)
 	putTLSWord(descriptor, word, 1)
 	guard := uintptr(unsafe.Pointer(unsafe.SliceData(data)))
-	if err := owner.Add(guard); err != nil {
-		t.Fatal(err)
+	if emulated {
+		if err := owner.Add(guard); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		guard = 0
 	}
 	input := compile(t, "testdata/emutls_msvc_runtime.c", filepath.Join(t.TempDir(), "runtime.o"))
 	load(t, s, input)
+	if nativeMode {
+		getter, err := s.Resolve("tls_native_guard")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := getter.WithAddress(owner.SetNativeThreadGuard); err != nil {
+			t.Fatal(err)
+		}
+	}
 	constructor, err := s.Resolve("tls_constructor")
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +95,11 @@ func TestNativeMSVCEmulatedTLSHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	call(t, s, "tls_use", 0, 0, 4)
-	if owner.LiveValues() != 1 {
+	wantLive := 0
+	if emulated {
+		wantLive = 1
+	}
+	if owner.LiveValues() != wantLive {
 		t.Fatal("thread guard was not allocated once")
 	}
 	if pending, drained := owner.DrainThreadDestructors(); pending != 0 || !drained {
@@ -293,10 +316,18 @@ func TestMSVCEmulatedTLSFormats(t *testing.T) {
 
 func TestNativeMSVCEmulatedTLSMultipleObjects(t *testing.T) {
 	needMSVCTLS(t)
+	testMSVCTLSMultipleObjects(t, false)
+}
+
+func testMSVCTLSMultipleObjects(t *testing.T, nativeMode bool) {
 	for _, optimization := range []string{"-O0", "-O2"} {
 		t.Run(optimization, func(t *testing.T) {
 			dir := t.TempDir()
-			flags := []string{"-std=c++17", "-femulated-tls", "-fno-exceptions", "-fno-rtti", optimization}
+			tlsFlag := "-femulated-tls"
+			if nativeMode {
+				tlsFlag = "-fno-emulated-tls"
+			}
+			flags := []string{"-std=c++17", tlsFlag, "-fno-exceptions", "-fno-rtti", optimization}
 			first := compile(t, "testdata/emutls_msvc_first.cpp", filepath.Join(dir, "first.o"), flags...)
 			second := compile(t, "testdata/emutls_msvc_second.cpp", filepath.Join(dir, "second.o"), flags...)
 			bad := compile(t, "testdata/emutls_msvc_bad.c", filepath.Join(dir, "unused.o"))
@@ -319,7 +350,7 @@ func TestNativeMSVCEmulatedTLSMultipleObjects(t *testing.T) {
 						} else if kind == "reversed_objects" {
 							input = second
 						}
-						s := threadDestructorSession(t, host, input, finalizer, false)
+						s := threadDestructorSession(t, host, input, finalizer, nativeMode)
 						if kind == "reversed_objects" {
 							load(t, s, first)
 						} else if kind == "objects" {
@@ -376,17 +407,25 @@ func TestNativeMSVCEmulatedTLSMultipleObjects(t *testing.T) {
 
 func TestNativeMSVCEmulatedTLSSnapshot(t *testing.T) {
 	needMSVCTLS(t)
+	testMSVCTLSSnapshot(t, false)
+}
+
+func testMSVCTLSSnapshot(t *testing.T, nativeMode bool) {
 	for _, optimization := range []string{"-O0", "-O2"} {
 		t.Run(optimization, func(t *testing.T) {
 			dir := t.TempDir()
-			object := compile(t, "testdata/emutls_msvc_snapshot.c", filepath.Join(dir, "snapshot.o"), optimization)
+			flags := []string{optimization}
+			if nativeMode {
+				flags = append(flags, "-DDYLIB_NATIVE_MSVC_TLS")
+			}
+			object := compile(t, "testdata/emutls_msvc_snapshot.c", filepath.Join(dir, "snapshot.o"), flags...)
 			archive := filepath.Join(dir, "snapshot.a")
 			command(t, "ar", "rcs", archive, object)
 			for _, kind := range []string{"object", "archive"} {
 				t.Run(kind, func(t *testing.T) {
 					runtime.LockOSThread()
 					defer runtime.UnlockOSThread()
-					s := New(Options{EmulatedTLS: true})
+					s := New(tlsDestructorOptions(nativeMode))
 					defer s.Close()
 					input := object
 					if kind == "archive" {
@@ -410,9 +449,13 @@ func TestNativeMSVCEmulatedTLSSnapshot(t *testing.T) {
 
 func TestNativeMSVCEmulatedTLSActiveInitialization(t *testing.T) {
 	needMSVCTLS(t)
+	testMSVCTLSActiveInitialization(t, false)
+}
+
+func testMSVCTLSActiveInitialization(t *testing.T, nativeMode bool) {
 	for _, optimization := range []string{"-O0", "-O2"} {
 		t.Run(optimization, func(t *testing.T) {
-			object, archive, finalizer := threadDestructorInputs(t, optimization, false, "-DDYLIB_TLS_DYNAMIC_INIT")
+			object, archive, finalizer := threadDestructorInputs(t, optimization, nativeMode, "-DDYLIB_TLS_DYNAMIC_INIT")
 			for _, kind := range []string{"object", "archive"} {
 				t.Run(kind, func(t *testing.T) {
 					host := nativeThreadLibrary(t, "testdata/emutls_dtor_host.c")
@@ -420,7 +463,7 @@ func TestNativeMSVCEmulatedTLSActiveInitialization(t *testing.T) {
 					if kind == "archive" {
 						input = archive
 					}
-					s := threadDestructorSession(t, host, input, finalizer, false)
+					s := threadDestructorSession(t, host, input, finalizer, nativeMode)
 					step, err := s.Resolve("tls_step")
 					if err != nil {
 						t.Fatal(err)

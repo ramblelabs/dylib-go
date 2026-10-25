@@ -41,7 +41,8 @@ type Options struct {
 	// image-owned storage, with the documented C++ wrappers/thread-exit hooks.
 	// Windows uses a Go-generated minimal DLL for OS-owned TLS; no compiler is
 	// needed to build that carrier. Clang GNU C++ thread-exit hooks also use the
-	// image-owned registry. Native MSVC C++ helpers, ELF initial/local-exec,
+	// image-owned registry. MSVC native/emulated C++ initialization shares the
+	// image-owned guard runtime. Native ELF initial/local-exec,
 	// loader-managed TLS initializer sections and foreign providers remain unsupported.
 	NativeTLS bool
 	// RegisterUnwind registers supported raw-image runtime function tables.
@@ -447,7 +448,7 @@ func (s *Session) selectObjects(roots []string) ([]*object, error) {
 				if s.opts.NativeTLS && (runtime.GOOS == "linux" && elfTLSRuntime(n) || runtime.GOOS == "darwin" && n == machoTLSBootstrap || runtime.GOOS == "windows" && coffTLSRuntime(n)) {
 					continue
 				}
-				if s.opts.NativeTLS && emulatedTLSThreadHelper(n) {
+				if s.opts.NativeTLS && (emulatedTLSThreadHelper(n) || runtime.GOOS == "windows" && emulatedTLSMSVCHelper(n)) {
 					continue
 				}
 				if s.opts.EmulatedTLS && (n == emulatedTLSHelper || emulatedTLSThreadHelper(n) || emulatedTLSMSVCHelper(n) || n == emulatedTLSMSVCGuard) {
@@ -752,6 +753,10 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 	if err != nil {
 		return nil, err
 	}
+	if coffTLSNeeded {
+		tlsNeeded = tlsNeeded || usesMSVCNativeTLS(objs)
+		objs, defs = coffTLSGuardObject(objs, defs)
+	}
 	im := &image{objects: objs, defs: defs, external: external, imports: imports, common: map[string]commonAllocation{}, resolved: map[string]uintptr{}, got: map[uintptr]uintptr{}, stubs: map[uintptr]uintptr{}, page: uint64(os.Getpagesize())}
 	im.aliases, err = weakAliases(objs)
 	if err != nil {
@@ -817,7 +822,7 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 	// Merge tentative/common definitions by maximum size and alignment.
 	type commonSize struct{ size, align uint64 }
 	commons := map[string]commonSize{}
-	if tlsNeeded && usesMSVCEmulatedTLS(objs) {
+	if tlsNeeded && emulatedTLS && usesMSVCEmulatedTLS(objs) {
 		commons[emulatedTLSMSVCGuard] = commonSize{4 * im.pointerSize, im.pointerSize}
 	}
 	for _, o := range objs {

@@ -38,6 +38,8 @@ typedef struct {
     dylib_tls_control *controls;
     size_t live, pending, active;
     dylib_tls_descriptor *guard;
+    unsigned char *(*native_guard)(void);
+    int initializers_set;
     void (**initializers)(void);
     size_t initializer_count;
 } dylib_tls_owner;
@@ -253,9 +255,11 @@ static void DYLIB_TLS_ENTRY dylib_tls_msvc_init(dylib_tls_owner *owner) {
     dylib_tls_enter();
     ++owner->active;
     dylib_tls_leave();
-    unsigned char *guard = (unsigned char *)dylib_tls_get_address(owner->guard);
-    if (!*guard) {
-        *guard = 1;
+    unsigned char *guard = owner->guard ? (unsigned char *)dylib_tls_get_address(owner->guard) : NULL;
+    unsigned char *native_guard = owner->native_guard ? owner->native_guard() : NULL;
+    if ((guard && !*guard) || (native_guard && !*native_guard)) {
+        if (guard) *guard = 1;
+        if (native_guard) *native_guard = 1;
         for (size_t i = 0; i < owner->initializer_count; ++i) owner->initializers[i]();
     }
     dylib_tls_enter();
@@ -264,13 +268,19 @@ static void DYLIB_TLS_ENTRY dylib_tls_msvc_init(dylib_tls_owner *owner) {
 }
 static int dylib_tls_set_initializers(dylib_tls_owner *owner, uintptr_t guard,
                                       const uintptr_t *initializers, size_t count) {
-    if (!guard || count > 4096 || owner->guard) return -1;
+    if ((!guard && !owner->native_guard) || count > 4096 || owner->initializers_set) return -1;
     void (**copy)(void) = count ? (void (**)(void))malloc(count * sizeof(*copy)) : NULL;
     if (count && !copy) return -1;
     for (size_t i = 0; i < count; ++i) copy[i] = (void (*)(void))initializers[i];
     owner->guard = (dylib_tls_descriptor *)guard;
+    owner->initializers_set = 1;
     owner->initializers = copy;
     owner->initializer_count = count;
+    return 0;
+}
+static int dylib_tls_set_native_guard(dylib_tls_owner *owner, uintptr_t entry) {
+    if (!entry || owner->native_guard || owner->initializers_set) return -1;
+    owner->native_guard = (unsigned char *(*)(void))entry;
     return 0;
 }
 static uintptr_t dylib_tls_msvc_init_helper(void) { return (uintptr_t)&dylib_tls_msvc_init; }
@@ -330,6 +340,12 @@ func (t *EmulatedTLS) Context() uintptr    { return uintptr(unsafe.Pointer(t.con
 func EmulatedTLSThreadExitHelper() uintptr { return uintptr(C.dylib_tls_exit_helper()) }
 func EmulatedTLSMSVCInitHelper() uintptr   { return uintptr(C.dylib_tls_msvc_init_helper()) }
 func EmulatedTLSMSVCExitHelper() uintptr   { return uintptr(C.dylib_tls_msvc_exit_helper()) }
+func (t *EmulatedTLS) SetNativeThreadGuard(entry uintptr) error {
+	if C.dylib_tls_set_native_guard(t.context, C.uintptr_t(entry)) != 0 {
+		return fmt.Errorf("configure native MSVC TLS guard")
+	}
+	return nil
+}
 func (t *EmulatedTLS) SetThreadInitializers(guard uintptr, entries []uintptr) error {
 	if C.dylib_tls_set_initializers(t.context, C.uintptr_t(guard), (*C.uintptr_t)(unsafe.Pointer(unsafe.SliceData(entries))), C.size_t(len(entries))) != 0 {
 		return fmt.Errorf("allocate native MSVC thread initializer table")

@@ -24,3 +24,6 @@ int tls_use(int a, int b) {
     return events;
 }
 int tls_events(int a, int b) { (void)a; (void)b; return events; }
+
+static unsigned char native_guard;
+unsigned char *tls_native_guard(void) { return &native_guard; }

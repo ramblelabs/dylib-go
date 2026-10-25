@@ -15,6 +15,7 @@ import (
 const coffTLSSection = 0x100
 const coffTLSIndex = "_tls_index"
 const coffTLSArray = "_tls_array"
+const coffTLSGuard = "__tls_guard"
 
 type coffTLSLayout struct {
 	sections           map[*section]uint64
@@ -23,7 +24,39 @@ type coffTLSLayout struct {
 	directory          string
 }
 
-func coffTLSRuntime(name string) bool { return name == coffTLSIndex || name == coffTLSArray }
+func coffTLSRuntime(name string) bool {
+	return name == coffTLSIndex || name == coffTLSArray || name == coffTLSGuard
+}
+
+func usesMSVCNativeTLS(objects []*object) bool {
+	for _, o := range objects {
+		if o.info.Format != "COFF" || o.info.OS != "windows" {
+			continue
+		}
+		for _, s := range o.symbols {
+			if s.section != -3 && s.global && strings.TrimPrefix(s.name, "__imp_") == coffTLSGuard {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// The runtime guard is real per-module native TLS, separate from any emulated
+// descriptor. Add a private definition only after validating all input symbols.
+func coffTLSGuardObject(objects []*object, defs map[string]definition) ([]*object, map[string]definition) {
+	if !usesMSVCNativeTLS(objects) {
+		return objects, defs
+	}
+	o := &object{info: objects[0].info, sections: []*section{nil, {name: ".tls$ZZZ", size: 1, align: 1, write: true, nativeTLS: coffTLSSection}}, symbols: []symbol{{name: coffTLSGuard, section: 1, global: true}}}
+	o.info.Name = "<native MSVC TLS guard>"
+	owned := make(map[string]definition, len(defs)+1)
+	for name, d := range defs {
+		owned[name] = d
+	}
+	owned[coffTLSGuard] = definition{o, 0}
+	return append(append([]*object(nil), objects...), o), owned
+}
 
 func checkCOFFTLS(objects []*object, enabled bool) (bool, error) {
 	needed := false
@@ -41,6 +74,9 @@ func checkCOFFTLS(objects []*object, enabled bool) (bool, error) {
 			}
 		}
 		for _, s := range o.symbols {
+			if s.name == coffTLSGuard && !s.global {
+				continue
+			}
 			if s.section == -3 || !coffTLSRuntime(strings.TrimPrefix(s.name, "__imp_")) {
 				continue
 			}
