@@ -206,6 +206,9 @@ func TestMachOCoalescedAtoms(t *testing.T) {
 					if le.Uint64(im.mem[private-uint64(im.base):]) != 17 || le.Uint64(im.mem[anchor-im.base+56:]) != uint64(drop) {
 						t.Fatal("private atom or whole-section binding lost")
 					}
+					if le.Uint64(im.mem[anchor-im.base+64:]) != uint64(record)+16 {
+						t.Fatal("named one-past alternate entry was not rebound")
+					}
 					for _, name := range []string{"coal_delta", "coal_reverse"} {
 						p, err := im.lookup(name)
 						want := uint64(record+8) - uint64(drop)
@@ -319,7 +322,7 @@ func TestMachOCoalescedValidation(t *testing.T) {
 	for _, target := range []string{"x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		t.Run(target, func(t *testing.T) {
 			_, original := machoCoalescedFixture(t, target, "macho_coalesced.S")
-			for _, name := range []string{"missing_subsections", "weak_alternate", "same_address_alias", "public_alternate", "symbol_bounds", "zero_size", "crossing_fixup", "overlap_fixup"} {
+			for _, name := range []string{"missing_subsections", "weak_alternate", "same_address_alias", "public_alternate", "public_end", "symbol_bounds", "zero_size", "crossing_fixup", "overlap_fixup"} {
 				t.Run(name, func(t *testing.T) {
 					b := append([]byte(nil), original...)
 					record, _ := machoAliasNlist(t, b, "coal_record")
@@ -331,13 +334,22 @@ func TestMachOCoalescedValidation(t *testing.T) {
 					case "same_address_alias":
 						keep, _ := machoAliasNlist(t, b, "coal_keep")
 						le.PutUint64(b[keep+8:], le.Uint64(b[record+8:]))
-					case "public_alternate":
+					case "public_alternate", "public_end":
 						f := machoPointerMetadata(t, b)
+						alias := "lcoal_middle"
+						if name == "public_end" {
+							alias = "lcoal_end"
+						}
+						patched := false
 						for i, s := range f.Symtab.Syms {
-							if s.Name == "lcoal_middle" {
+							if s.Name == alias {
 								offset := int(le.Uint32(f.Symtab.Raw()[8:])) + i*16
 								b[offset+4] |= 1
+								patched = true
 							}
+						}
+						if !patched {
+							t.Fatal("missing public alternate-entry producer")
 						}
 					case "symbol_bounds", "zero_size":
 						f := machoPointerMetadata(t, b)

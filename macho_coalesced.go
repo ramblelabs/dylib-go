@@ -46,8 +46,8 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 				return fmt.Errorf("%s is a zero-size coalesced weak definition", s.name)
 			}
 			if f.Symtab.Syms[i].Desc&0x200 != 0 { // N_ALT_ENTRY shares the preceding atom.
-				if s.global && s.weak {
-					return fmt.Errorf("%s is a public weak alternate entry", s.name)
+				if s.global {
+					return fmt.Errorf("%s is a public alternate entry", s.name)
 				}
 				continue
 			}
@@ -120,6 +120,9 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 				}
 				s := o.symbols[*operand.index]
 				atom := machoAtomAt(atoms, s.section, s.value)
+				if atom == nil && s.section > 0 && s.section < len(o.sections) && o.sections[s.section] != nil && s.value == o.sections[s.section].size && s.value != 0 && !s.global && *operand.index < len(f.Symtab.Syms) && f.Symtab.Syms[*operand.index].Desc&0x200 != 0 {
+					atom = machoAtomAt(atoms, s.section, s.value-1) // A named alternate may be one-past.
+				}
 				if atom == nil || *operand.index == atom.key {
 					continue
 				}

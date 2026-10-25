@@ -26,6 +26,8 @@ _coal_record:
 lcoal_middle:
 Lcoal_middle:
 .quad 9
+.alt_entry lcoal_end
+lcoal_end:
 Lcoal_end:
 
 .section __DATA,__coal_drop,coalesced
@@ -54,6 +56,7 @@ DYLIB_COAL_ANCHOR:
 .quad Lcoal_end
 .quad lcoal_private
 .quad _coal_drop
+.quad lcoal_end
 .globl _coal_delta, _coal_reverse
 .weak_definition _coal_delta, _coal_reverse
 _coal_delta:

@@ -233,7 +233,12 @@ func TestNativeMachOCoalescedSystemControl(t *testing.T) {
 					args = append(args, tc.flags...)
 					args = append(args, tc.inputs...)
 					command(t, compiler(), append(args, "-o", exe)...)
-					command(t, exe)
+					if output, err := exec.Command(exe).CombinedOutput(); err != nil {
+						trace := exe + "-trace"
+						command(t, compiler(), append(args, "-DDYLIB_COAL_TRACE", "-o", trace)...)
+						detail, traceErr := exec.Command(trace).CombinedOutput()
+						t.Fatalf("Apple control: %v: %s; diagnostic build: %v:\n%s", err, output, traceErr, detail)
+					}
 				})
 			}
 		})
