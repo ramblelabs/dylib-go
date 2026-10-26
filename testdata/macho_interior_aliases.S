@@ -1,4 +1,7 @@
-.section __DATA,__coal_alias,coalesced
+#ifndef DYLIB_COAL_KIND
+#define DYLIB_COAL_KIND coalesced
+#endif
+.section __DATA,__coal_alias,DYLIB_COAL_KIND
 .p2align 4
 .globl _coal_alias_record
 .weak_definition _coal_alias_record
@@ -10,7 +13,7 @@ lalias_mid:
 .alt_entry lalias_end
 lalias_end:
 
-.section __TEXT,__coal_code,coalesced,pure_instructions
+.section __TEXT,__coal_code,DYLIB_COAL_KIND,pure_instructions
 .p2align 3
 .globl _coal_alias_function
 .weak_definition _coal_alias_function

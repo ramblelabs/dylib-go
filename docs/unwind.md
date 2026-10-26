@@ -159,7 +159,8 @@ initialization if it is missing.
 The metadata-only `S_COALESCED` type of `__eh_frame` is accepted without
 extending general Mach-O symbol/section coalescing.
 
-For the [bounded coalesced weak atoms](macho.md#coalesced-weak-atoms), selection
+For the [bounded weak atoms](macho.md#coalesced-weak-atoms) in ordinary and explicit
+coalesced sections, selection
 prunes losing FDEs, unused CIEs and compact records before dependency discovery.
 Retained records repair explicit ARM64 anchors and implicit AMD64 PC/LSDA
 fields. Private LSDA tables used only by losing frames lose their fixups and

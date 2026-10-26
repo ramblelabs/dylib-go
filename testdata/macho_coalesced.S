@@ -1,4 +1,7 @@
-.section __DATA,__coal,coalesced
+#ifndef DYLIB_COAL_KIND
+#define DYLIB_COAL_KIND coalesced
+#endif
+.section __DATA,__coal,DYLIB_COAL_KIND
 .p2align 3
 .globl _coal_value
 .weak_definition _coal_value
@@ -33,7 +36,7 @@ lcoal_end:
 #endif
 Lcoal_end:
 
-.section __DATA,__coal_drop,coalesced
+.section __DATA,__coal_drop,DYLIB_COAL_KIND
 .p2align 3
 .globl _coal_drop
 .weak_definition _coal_drop
@@ -97,7 +100,7 @@ movzbl %al, %eax
 retq
 #endif
 
-.section __TEXT,__coal_code,coalesced,pure_instructions
+.section __TEXT,__coal_code,DYLIB_COAL_KIND,pure_instructions
 .p2align 2
 .globl _coal_func
 .weak_definition _coal_func

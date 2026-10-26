@@ -37,24 +37,38 @@ func machoCoalescedArchive(t *testing.T, inputs ...string) string {
 	return path
 }
 
-func TestNativeMachOCoalescedAtoms(t *testing.T) {
+func TestNativeMachOCoalescedAtoms(t *testing.T) { testNativeMachOAtomCalls(t, false) }
+
+func TestNativeMachOOrdinaryAtoms(t *testing.T) { testNativeMachOAtomCalls(t, true) }
+
+func testNativeMachOAtomCalls(t *testing.T, ordinary bool) {
 	target := needMachOCoalescedNative(t)
 	for _, opt := range []string{"-O0", "-O2"} {
 		t.Run(opt, func(t *testing.T) {
-			weak, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt)
+			fixture := func(source string, flags ...string) (string, []byte) {
+				if ordinary {
+					flags = append(flags, "-DDYLIB_COAL_KIND=regular")
+				}
+				return machoCoalescedFixture(t, target, source, flags...)
+			}
+			weak, _ := fixture("macho_coalesced.S", opt)
 			local := machoCoalescedLocalFile(t, weak)
-			strong, _ := machoCoalescedFixture(t, target, "macho_coalesced_strong.c", opt)
-			probe, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt)
-			legacy, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_NO_NAMED_END")
-			legacyProbe, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt, "-DDYLIB_COAL_NO_NAMED_END")
-			first, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=7")
-			second, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=33", "-DDYLIB_COAL_ANCHOR=_coal_anchor_second")
-			probe7, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt, "-DDYLIB_COAL_VALUE=7", "-DDYLIB_COAL_TWO_ANCHORS")
-			probe33, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt, "-DDYLIB_COAL_VALUE=33", "-DDYLIB_COAL_TWO_ANCHORS")
-			probeCommon, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt, "-DDYLIB_COAL_VALUE=7")
+			strong, _ := fixture("macho_coalesced_strong.c", opt)
+			probe, _ := fixture("macho_coalesced_probe.c", opt)
+			legacy, _ := fixture("macho_coalesced.S", opt, "-DDYLIB_COAL_NO_NAMED_END")
+			legacyProbe, _ := fixture("macho_coalesced_probe.c", opt, "-DDYLIB_COAL_NO_NAMED_END")
+			first, _ := fixture("macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=7")
+			second, _ := fixture("macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=33", "-DDYLIB_COAL_ANCHOR=_coal_anchor_second")
+			probe7, _ := fixture("macho_coalesced_probe.c", opt, "-DDYLIB_COAL_VALUE=7", "-DDYLIB_COAL_TWO_ANCHORS")
+			probe33, _ := fixture("macho_coalesced_probe.c", opt, "-DDYLIB_COAL_VALUE=33", "-DDYLIB_COAL_TWO_ANCHORS")
+			probeCommon, _ := fixture("macho_coalesced_probe.c", opt, "-DDYLIB_COAL_VALUE=7")
 			common := machoCoalescedAssembly(t, target, ".comm _coal_value,8,3\n")
 			poison := machoCoalescedAssembly(t, target, ".data\n.globl _coal_missing, _coal_missing_drop\n_coal_missing:\n.quad _coal_poison\n_coal_missing_drop:\n.quad 0\n.globl _coal_missing_func\n_coal_missing_func:\n.quad 0\n")
-			bad := machoCoalescedAssembly(t, target, ".section __DATA,__coal,coalesced\n.globl _coal_unused, _coal_unused_alias\n.weak_definition _coal_unused\n_coal_unused:\n_coal_unused_alias:\n.quad _coal_unused_missing\n.subsections_via_symbols\n")
+			sectionKind := "coalesced"
+			if ordinary {
+				sectionKind = "regular"
+			}
+			bad := machoCoalescedAssembly(t, target, ".section __DATA,__coal,"+sectionKind+"\n.globl _coal_unused, _coal_unused_alias\n.weak_definition _coal_unused\n_coal_unused:\n_coal_unused_alias:\n.quad _coal_unused_missing\n.subsections_via_symbols\n")
 			archive := machoCoalescedArchive(t, poison, bad, weak)
 			localArchive := machoCoalescedArchive(t, poison, bad, local)
 			weakArchive := machoCoalescedArchive(t, first, second, poison)
@@ -114,7 +128,11 @@ func TestNativeMachOCoalescedAtoms(t *testing.T) {
 				s := New(Options{})
 				defer s.Close()
 				load(t, s, archive)
-				if err := s.Link("coal_unused"); err == nil || !strings.Contains(err.Error(), "coalesced atoms") {
+				expected := "coalesced atoms"
+				if ordinary {
+					expected = "unresolved symbol coal_unused_missing"
+				}
+				if err := s.Link("coal_unused"); err == nil || !strings.Contains(err.Error(), expected) {
 					t.Fatal("selected public coalesced alias accepted", err)
 				}
 			})
@@ -133,13 +151,23 @@ func TestNativeMachOCoalescedAtoms(t *testing.T) {
 	}
 }
 
-func TestNativeMachOCoalescedLifecycle(t *testing.T) {
+func TestNativeMachOCoalescedLifecycle(t *testing.T) { testNativeMachOLifecycle(t, false) }
+
+func TestNativeMachOOrdinaryLifecycle(t *testing.T) { testNativeMachOLifecycle(t, true) }
+
+func testNativeMachOLifecycle(t *testing.T, ordinary bool) {
 	target := needMachOCoalescedNative(t)
 	for _, opt := range []string{"-O0", "-O2"} {
 		t.Run(opt, func(t *testing.T) {
-			weak, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_LIFECYCLE")
-			strong, _ := machoCoalescedFixture(t, target, "macho_coalesced_strong.c", opt, "-DDYLIB_COAL_LIFECYCLE")
-			probe, _ := machoCoalescedFixture(t, target, "macho_coalesced_probe.c", opt)
+			fixture := func(source string, flags ...string) (string, []byte) {
+				if ordinary {
+					flags = append(flags, "-DDYLIB_COAL_KIND=regular")
+				}
+				return machoCoalescedFixture(t, target, source, flags...)
+			}
+			weak, _ := fixture("macho_coalesced.S", opt, "-DDYLIB_COAL_LIFECYCLE")
+			strong, _ := fixture("macho_coalesced_strong.c", opt, "-DDYLIB_COAL_LIFECYCLE")
+			probe, _ := fixture("macho_coalesced_probe.c", opt)
 			for _, kind := range []string{"objects", "archive"} {
 				t.Run(kind, func(t *testing.T) {
 					_, observer, read := lifecycleObserver(t, t.TempDir())
@@ -208,16 +236,26 @@ func machoCoalescedSDK(t *testing.T) string {
 	return sdk
 }
 
-func TestNativeMachOCoalescedSystemControl(t *testing.T) {
+func TestNativeMachOCoalescedSystemControl(t *testing.T) { testNativeMachOSystemControl(t, false) }
+
+func TestNativeMachOOrdinarySystemControl(t *testing.T) { testNativeMachOSystemControl(t, true) }
+
+func testNativeMachOSystemControl(t *testing.T, ordinary bool) {
 	target := needMachOCoalescedNative(t)
 	sdk := machoCoalescedSDK(t)
 	for _, opt := range []string{"-O0", "-O2"} {
 		t.Run(opt, func(t *testing.T) {
-			weak, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt)
-			legacy, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_NO_NAMED_END")
+			fixture := func(source string, flags ...string) (string, []byte) {
+				if ordinary {
+					flags = append(flags, "-DDYLIB_COAL_KIND=regular")
+				}
+				return machoCoalescedFixture(t, target, source, flags...)
+			}
+			weak, _ := fixture("macho_coalesced.S", opt)
+			legacy, _ := fixture("macho_coalesced.S", opt, "-DDYLIB_COAL_NO_NAMED_END")
 			local := machoCoalescedLocalFile(t, weak)
-			strong, _ := machoCoalescedFixture(t, target, "macho_coalesced_strong.c", opt)
-			resolved, _ := machoCoalescedFixture(t, target, "macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=7")
+			strong, _ := fixture("macho_coalesced_strong.c", opt)
+			resolved, _ := fixture("macho_coalesced.S", opt, "-DDYLIB_COAL_VALUE=7")
 			common := machoCoalescedAssembly(t, target, ".comm _coal_value,8,3\n")
 			for _, tc := range []struct {
 				name   string

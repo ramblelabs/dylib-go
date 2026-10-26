@@ -166,15 +166,34 @@ func machoCoalescedImage(t *testing.T, objects []*object) *image {
 	return im
 }
 
-func TestMachOCoalescedAtoms(t *testing.T) {
+func TestMachOCoalescedAtoms(t *testing.T) { testMachOAtoms(t, false) }
+
+func TestMachOOrdinaryAtoms(t *testing.T) { testMachOAtoms(t, true) }
+
+func testMachOAtoms(t *testing.T, ordinary bool) {
 	for _, target := range []string{"x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		t.Run(target, func(t *testing.T) {
-			_, b := machoCoalescedFixture(t, target, "macho_coalesced.S")
+			var flags []string
+			if ordinary {
+				flags = []string{"-DDYLIB_COAL_KIND=regular"}
+			}
+			_, b := machoCoalescedFixture(t, target, "macho_coalesced.S", flags...)
+			if ordinary {
+				for _, s := range machoPointerMetadata(t, b).Sections {
+					if s.Flags&0xff == 0xb {
+						t.Fatal("ordinary fixture still uses S_COALESCED")
+					}
+				}
+			}
 			weak := parseMachoAliases(t, b)
 			_, b = machoCoalescedFixture(t, target, "macho_coalesced_strong.c")
 			strong := parseMachoAliases(t, b)
 			discardUnwind(strong)
-			if len(weak.machoAtoms) != 6 {
+			wantAtoms := 8 // Six named fixture atoms and two extra data atoms.
+			if weak.info.Arch == "amd64" {
+				wantAtoms += 4
+			}
+			if len(weak.machoAtoms) != wantAtoms {
 				t.Fatal("genuine multi-atom input missing", weak.machoAtoms)
 			}
 			for _, s := range weak.symbols {

@@ -33,10 +33,18 @@ func machoInteriorPointers(t *testing.T, input []byte) []byte {
 	return b
 }
 
-func TestMachOInteriorAliases(t *testing.T) {
+func TestMachOInteriorAliases(t *testing.T) { testMachOInteriorAliases(t, false) }
+
+func TestMachOOrdinaryInteriorAliases(t *testing.T) { testMachOInteriorAliases(t, true) }
+
+func testMachOInteriorAliases(t *testing.T, ordinary bool) {
 	for _, target := range []string{"x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		t.Run(target, func(t *testing.T) {
-			_, b := machoCoalescedFixture(t, target, "macho_interior_aliases.S")
+			var flags []string
+			if ordinary {
+				flags = []string{"-DDYLIB_COAL_KIND=regular"}
+			}
+			_, b := machoCoalescedFixture(t, target, "macho_interior_aliases.S", flags...)
 			_, strongBytes := machoCoalescedFixture(t, target, "macho_interior_strong.S")
 			for _, encoding := range []string{"local", "nlist"} {
 				t.Run(encoding, func(t *testing.T) {
@@ -194,11 +202,19 @@ func machoInteriorFile(t *testing.T, input []byte) string {
 	return path
 }
 
-func TestNativeMachOInteriorAliases(t *testing.T) {
+func TestNativeMachOInteriorAliases(t *testing.T) { testNativeMachOInteriorAliases(t, false) }
+
+func TestNativeMachOOrdinaryInteriorAliases(t *testing.T) { testNativeMachOInteriorAliases(t, true) }
+
+func testNativeMachOInteriorAliases(t *testing.T, ordinary bool) {
 	target := needMachOCoalescedNative(t)
 	for _, opt := range []string{"-O0", "-O2"} {
 		t.Run(opt, func(t *testing.T) {
-			weak, b := machoCoalescedFixture(t, target, "macho_interior_aliases.S", opt)
+			flags := []string{opt}
+			if ordinary {
+				flags = append(flags, "-DDYLIB_COAL_KIND=regular")
+			}
+			weak, b := machoCoalescedFixture(t, target, "macho_interior_aliases.S", flags...)
 			nlist := machoInteriorFile(t, b)
 			strong, _ := machoCoalescedFixture(t, target, "macho_interior_strong.S", opt)
 			probe, _ := machoCoalescedFixture(t, target, "macho_interior_probe.c", opt)
@@ -286,6 +302,14 @@ func TestNativeMachOInteriorAliases(t *testing.T) {
 }
 
 func TestNativeMachOInteriorSystemControl(t *testing.T) {
+	testNativeMachOInteriorSystemControl(t, false)
+}
+
+func TestNativeMachOOrdinaryInteriorSystemControl(t *testing.T) {
+	testNativeMachOInteriorSystemControl(t, true)
+}
+
+func testNativeMachOInteriorSystemControl(t *testing.T, ordinary bool) {
 	target := needMachOCoalescedNative(t)
 	sdk := machoCoalescedSDK(t)
 	for _, opt := range []string{"-O0", "-O2"} {
@@ -293,7 +317,11 @@ func TestNativeMachOInteriorSystemControl(t *testing.T) {
 			// Apple ld rejects these raw symboled indirect-section inputs. Use
 			// equivalent ordinary pointer storage and a GOT tail call, keeping
 			// the identical probe's pointer identity and interior calls intact.
-			weak, _ := machoCoalescedFixture(t, target, "macho_interior_aliases.S", opt, "-DDYLIB_ALIAS_CONTROL")
+			flags := []string{opt, "-DDYLIB_ALIAS_CONTROL"}
+			if ordinary {
+				flags = append(flags, "-DDYLIB_COAL_KIND=regular")
+			}
+			weak, _ := machoCoalescedFixture(t, target, "macho_interior_aliases.S", flags...)
 			strong, _ := machoCoalescedFixture(t, target, "macho_interior_strong.S", opt)
 			for _, order := range []string{"weak_first", "strong_first"} {
 				t.Run(order, func(t *testing.T) {
