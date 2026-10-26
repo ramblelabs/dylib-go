@@ -25,15 +25,29 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 		}
 	}
 	for index, input := range f.Sections {
-		if input.Flags&0xff != 0xb || input.Name == "__eh_frame" || input.Size == 0 || o.sections[index+1] == nil {
+		kind := input.Flags & 0xff
+		strict := kind == 0xb
+		ordinary := (kind == 0 || kind == 1 || kind == 0xc) && f.Flags&macho.FlagSubsectionsViaSymbols != 0
+		if !strict && !ordinary || input.Name == "__eh_frame" || input.Name == "__compact_unwind" || input.Name == "__gcc_except_tab" || input.Size == 0 || o.sections[index+1] == nil {
 			continue
 		}
 		section := index + 1
+		if ordinary {
+			weak := false
+			for _, i := range bySection[section] {
+				s := o.symbols[i]
+				weak = weak || s.global && s.weak
+			}
+			if !weak {
+				continue
+			}
+		}
 		if input.Addr > math.MaxInt64-input.Size {
 			return fmt.Errorf("%s original address is too large", input.Name)
 		}
 		byOffset := make(map[uint64][]int)
 		starts := []uint64{0, input.Size}
+		var publicAlternates []uint64
 		if f.Symtab == nil {
 			return fmt.Errorf("%s has no symbol boundaries", input.Name)
 		}
@@ -42,12 +56,15 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 			if s.value > input.Size {
 				return fmt.Errorf("%s symbol outside section", input.Name)
 			}
-			if s.global && s.weak && s.value == input.Size {
+			if strict && s.global && s.weak && s.value == input.Size {
 				return fmt.Errorf("%s is a zero-size coalesced weak definition", s.name)
 			}
 			if f.Symtab.Syms[i].Desc&0x200 != 0 { // N_ALT_ENTRY shares the preceding atom.
-				if s.global {
+				if strict && s.global {
 					return fmt.Errorf("%s is a public alternate entry", s.name)
+				}
+				if s.global {
+					publicAlternates = append(publicAlternates, s.value)
 				}
 				continue
 			}
@@ -58,6 +75,7 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 			starts = append(starts, s.value)
 		}
 		sort.Slice(starts, func(i, j int) bool { return starts[i] < starts[j] })
+		sort.Slice(publicAlternates, func(i, j int) bool { return publicAlternates[i] < publicAlternates[j] })
 		for i, start := range starts {
 			if start == input.Size || i+1 == len(starts) || starts[i+1] == start {
 				continue
@@ -76,7 +94,14 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 				// LLVM ARM64 emits local ltmp aliases at section starts. They
 				// share this atom; only competing public identities are ambiguous.
 				if s.name == "" || f.Symtab.Syms[key].Desc&0x80 == 0 || globals != 1 {
+					if ordinary {
+						continue
+					}
 					return fmt.Errorf("%s needs one named public weak definition", s.name)
+				}
+				alternate := sort.Search(len(publicAlternates), func(i int) bool { return publicAlternates[i] >= start })
+				if alternate < len(publicAlternates) && publicAlternates[alternate] <= starts[i+1] {
+					continue // Preserve ordinary alias-bearing storage until its complete identity is modeled.
 				}
 				atom := machoCoalescedAtom{section: section, key: key, start: start, end: starts[i+1]}
 				atoms = append(atoms, atom)

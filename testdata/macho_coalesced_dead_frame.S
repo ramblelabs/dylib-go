@@ -1,4 +1,7 @@
-.section __TEXT,__coal_dead,coalesced,pure_instructions
+#ifndef DYLIB_COAL_KIND
+#define DYLIB_COAL_KIND coalesced
+#endif
+.section __TEXT,__coal_dead,DYLIB_COAL_KIND,pure_instructions
 .p2align 2
 .globl _coal_frame_deadonly
 .weak_definition _coal_frame_deadonly

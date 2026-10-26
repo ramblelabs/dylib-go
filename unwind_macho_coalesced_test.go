@@ -10,7 +10,7 @@ import (
 	examplecall "github.com/ramblelabs/dylib-go/examples/call"
 )
 
-func machoCoalescedFrames(t *testing.T, target, opt, mode string, strong bool) (string, *object) {
+func machoCoalescedFrames(t *testing.T, target, opt, mode string, strong bool, extra ...string) (string, *object) {
 	t.Helper()
 	flags := []string{opt, "-fexceptions", "-fno-stack-protector"}
 	if mode == "compact" {
@@ -21,18 +21,32 @@ func machoCoalescedFrames(t *testing.T, target, opt, mode string, strong bool) (
 	if strong {
 		flags = append(flags, "-DDYLIB_FRAME_STRONG")
 	}
+	flags = append(flags, extra...)
 	path, b := machoCoalescedFixture(t, target, "macho_coalesced_frames.cpp", flags...)
 	return path, parseMachoAliases(t, b)
 }
 
 func TestMachOCoalescedFramePruning(t *testing.T) {
+	testMachOFramePruning(t, false)
+}
+
+func TestMachOOrdinaryFramePruning(t *testing.T) {
+	testMachOFramePruning(t, true)
+}
+
+func testMachOFramePruning(t *testing.T, ordinary bool) {
+	var frameFlags, deadFlags []string
+	if ordinary {
+		frameFlags = []string{"-DDYLIB_FRAME_ORDINARY"}
+		deadFlags = []string{"-DDYLIB_COAL_KIND=regular"}
+	}
 	for _, target := range []string{"x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		for _, opt := range []string{"-O0", "-O2"} {
 			for _, mode := range []string{"dwarf", "compact"} {
 				t.Run(target+"/"+opt+"/"+mode, func(t *testing.T) {
-					_, weak := machoCoalescedFrames(t, target, opt, mode, false)
+					_, weak := machoCoalescedFrames(t, target, opt, mode, false, frameFlags...)
 					_, strong := machoCoalescedFrames(t, target, opt, mode, true)
-					_, deadBytes := machoCoalescedFixture(t, target, "macho_coalesced_dead_frame.S")
+					_, deadBytes := machoCoalescedFixture(t, target, "macho_coalesced_dead_frame.S", deadFlags...)
 					dead := parseMachoAliases(t, deadBytes)
 					typeReference := false
 					for _, r := range weak.relocs {
@@ -287,13 +301,26 @@ func TestMachOCoalescedFrameValidation(t *testing.T) {
 }
 
 func TestNativeMachOCoalescedFrames(t *testing.T) {
+	testNativeMachOFrames(t, false)
+}
+
+func TestNativeMachOOrdinaryFrames(t *testing.T) {
+	testNativeMachOFrames(t, true)
+}
+
+func testNativeMachOFrames(t *testing.T, ordinary bool) {
 	target := needMachOCoalescedNative(t)
+	var frameFlags, deadFlags []string
+	if ordinary {
+		frameFlags = []string{"-DDYLIB_FRAME_ORDINARY"}
+		deadFlags = []string{"-DDYLIB_COAL_KIND=regular"}
+	}
 	for _, opt := range []string{"-O0", "-O2"} {
 		for _, mode := range []string{"dwarf", "compact"} {
 			t.Run(opt+"/"+mode, func(t *testing.T) {
-				weak, _ := machoCoalescedFrames(t, target, opt, mode, false)
+				weak, _ := machoCoalescedFrames(t, target, opt, mode, false, frameFlags...)
 				strong, _ := machoCoalescedFrames(t, target, opt, mode, true)
-				dead, _ := machoCoalescedFixture(t, target, "macho_coalesced_dead_frame.S")
+				dead, _ := machoCoalescedFixture(t, target, "macho_coalesced_dead_frame.S", deadFlags...)
 				unused := machoCoalescedAssembly(t, target, ".data\n.globl _coal_frame_unused\n_coal_frame_unused:\n.quad _coal_frame_poison\n")
 				host := filepath.Join(t.TempDir(), "host.dylib")
 				sdk := machoCoalescedSDK(t)
@@ -308,6 +335,7 @@ func TestNativeMachOCoalescedFrames(t *testing.T) {
 				for _, order := range []string{"weak_first", "strong_first"} {
 					t.Run("system_control/"+order, func(t *testing.T) {
 						flags := []string{opt, "-fexceptions", "-fno-stack-protector", "-DDYLIB_FRAME_STANDALONE"}
+						flags = append(flags, frameFlags...)
 						if mode == "compact" {
 							flags = append(flags, "-DDYLIB_CXX_COMPACT")
 						} else {

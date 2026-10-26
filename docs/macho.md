@@ -2,13 +2,29 @@
 
 ## Coalesced weak atoms
 
-Raw macOS amd64/arm64 objects support bounded `S_COALESCED` weak atoms in
-objects and lazy archives. `MH_SUBSECTIONS_VIA_SYMBOLS` and non-alternate nlist
+Raw macOS amd64/arm64 objects support bounded weak atoms in ordinary code,
+data and zero-fill sections (`S_REGULAR`, `S_ZEROFILL`, `S_GB_ZEROFILL`) and
+explicit `S_COALESCED` sections, in objects and lazy archives.
+`MH_SUBSECTIONS_VIA_SYMBOLS` and non-alternate nlist
 boundaries identify independent atoms; a single whole-section atom does not
 require that flag. Local aliases at a boundary and local `N_ALT_ENTRY` names
 inside an atom share its identity. Each coalescible atom needs one public weak
 definition. Multiple public names at a boundary, public alternate entries,
-zero-size weak atoms and ambiguous boundaries remain unsupported.
+zero-size weak atoms and ambiguous boundaries remain unsupported for explicit
+`S_COALESCED` atom parsing.
+
+Ordinary sections require `MH_SUBSECTIONS_VIA_SYMBOLS`. Only nonempty atoms
+with one named public weak definition and no public alternate entries are
+discardable. Strong/private neighbors retain their bytes and fixups; zero-fill
+atoms need no backing file bytes. A wholly discarded BSS section needs no
+storage, and an entirely redundant archive member remains unselected. Inputs
+without the subsections flag, ordinary zero-size weak names, and ordinary
+atoms with multiple public names or public alternate entries retain their
+existing storage/fixup behavior and independent global-name selection. General
+public-alias address identity and alias-group discard remain separate work.
+Frame, compact-unwind and LSDA sections use associated-record pruning rather
+than independent ordinary-atom selection; native TLS and literal section
+models are unchanged.
 
 Among selected definitions, a strong definition wins over a weak one and the
 first selected weak definition wins a weak/weak tie. Mach-O real definitions,
@@ -45,7 +61,7 @@ ARM64 subtractor anchors. Exception tables referenced only by losing frames
 drop their fixups and private definitions; their bytes remain unused padding.
 Shared live exception tables retain their storage. Default loading continues
 to discard optional unwind metadata. Weak bodies in ordinary regular sections
-still use normal symbol selection without atom-fixup discard.
+use the same discard and unwind rules when their boundaries qualify above.
 
 Pruning uses the existing supported DWARF/compact encodings and at most 65,536
 records per section. Nonoverlapping original sections and the scratch GOT
@@ -74,6 +90,18 @@ Apple interior-alias control uses equivalent ordinary pointer storage and a
 GOT tail call because the system linker rejects these raw symboled indirect
 section inputs. It executes the same pointer-identity and function-call probe;
 the loader's indirect-table tests execute the original raw sections.
+
+Ordinary-section tests reuse these pointer, subtractor, GOT/stub, archive,
+lifecycle and C++ unwind probes with genuine regular-section producers. BSS
+tests additionally cover retained zeros, strong initialized replacements,
+private interior/one-past pointers, whole-section removal, large-zero-fill
+section headers and independent Apple-linked execution. Boundary tests keep
+unqualified alias-bearing storage and its missing dependencies intact.
+Zero-fill archive tests wrap the compiler-produced objects in an indexless ar
+container because LLVM and older Apple archivers reject `S_GB_ZEROFILL`.
+Their Apple-linked value/pointer controls use equivalent C-produced weak zero
+storage because older Apple linkers reject raw weak BSS replacements; loader
+object/archive calls keep the original zero-fill sections and local aliases.
 
 ## Forwarding aliases
 

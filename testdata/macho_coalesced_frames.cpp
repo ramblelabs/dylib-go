@@ -14,7 +14,11 @@ struct DeadFrameType { virtual ~DeadFrameType(); };
 struct FrameGuard {
     __attribute__((always_inline)) ~FrameGuard() { cxx_event(1); }
 };
+#ifdef DYLIB_FRAME_ORDINARY
+#define COAL_FRAME __attribute__((weak, noinline))
+#else
 #define COAL_FRAME __attribute__((weak, noinline, section("__TEXT,__coal_frames,coalesced,pure_instructions")))
+#endif
 extern "C" COAL_FRAME int coal_frame_drop(int a, int b) {
     DYLIB_CXX_DWARF();
     try { return coal_frame_missing(a, b); }
