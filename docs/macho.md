@@ -97,6 +97,11 @@ tests additionally cover retained zeros, strong initialized replacements,
 private interior/one-past pointers, whole-section removal, large-zero-fill
 section headers and independent Apple-linked execution. Boundary tests keep
 unqualified alias-bearing storage and its missing dependencies intact.
+Zero-fill archive tests wrap the compiler-produced objects in an indexless ar
+container because LLVM and older Apple archivers reject `S_GB_ZEROFILL`.
+Their Apple-linked value/pointer controls use equivalent C-produced weak zero
+storage because older Apple linkers reject raw weak BSS replacements; loader
+object/archive calls keep the original zero-fill sections and local aliases.
 
 ## Forwarding aliases
 

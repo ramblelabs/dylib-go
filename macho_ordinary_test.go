@@ -181,10 +181,15 @@ func TestNativeMachOOrdinaryZeroFill(t *testing.T) {
 				for _, kind := range []string{"objects", "archive", "system_control"} {
 					t.Run(kind, func(t *testing.T) {
 						if kind == "system_control" {
+							// Older Apple linkers reject weak zero-fill replacements.
+							// Compare the same values/pointers with regular zero storage;
+							// loader object/archive calls above still use real zero-fill.
+							controlFlags := append([]string{"-DDYLIB_ZERO_CONTROL"}, flags...)
+							control, _ := machoCoalescedFixture(t, target, "macho_ordinary_zero.c", controlFlags...)
 							exe := filepath.Join(t.TempDir(), "control")
 							args := []string{"--target=" + target, "-isysroot", sdk, "-Wl,-syslibroot," + sdk, "-Wl,-dead_strip", "testdata/macho_ordinary_zero.c", "-DDYLIB_ZERO_STANDALONE"}
 							args = append(args, flags...)
-							args = append(args, weak)
+							args = append(args, control)
 							if variant != "retained" {
 								args = append(args, strong)
 							}
@@ -196,7 +201,21 @@ func TestNativeMachOOrdinaryZeroFill(t *testing.T) {
 						defer s.Close()
 						inputs := []string{weak, probe}
 						if kind == "archive" {
-							inputs = []string{probe, machoCoalescedArchive(t, unused, weak)}
+							// LLVM and older Apple archivers reject S_GB_ZEROFILL.
+							// Keep the genuine objects in an indexless ar container.
+							archive := filepath.Join(t.TempDir(), "zero.a")
+							data := []byte("!<arch>\n")
+							for _, input := range []string{unused, weak} {
+								b, err := os.ReadFile(input)
+								if err != nil {
+									t.Fatal(err)
+								}
+								data = append(data, archiveMemberBytes(filepath.Base(input)+"/", b)...)
+							}
+							if err := os.WriteFile(archive, data, 0600); err != nil {
+								t.Fatal(err)
+							}
+							inputs = []string{probe, archive}
 						}
 						if variant != "retained" {
 							if kind == "archive" {

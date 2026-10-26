@@ -1,5 +1,15 @@
 #ifdef DYLIB_ZERO_STRONG
 long ordinary_zero[2] = {11, 31};
+#elif defined(DYLIB_ZERO_CONTROL)
+long ordinary_zero[2] __attribute__((weak)) = {0, 0};
+#ifndef DYLIB_ZERO_ALIASLESS
+long *ordinary_zero_pointers[3] = {
+    ordinary_zero, ordinary_zero+1, ordinary_zero+2
+};
+#endif
+#ifndef DYLIB_ZERO_WHOLE
+long ordinary_before_zero;
+#endif
 #else
 extern long ordinary_zero[2];
 #ifndef DYLIB_ZERO_ALIASLESS
