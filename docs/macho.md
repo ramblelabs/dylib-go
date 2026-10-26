@@ -27,10 +27,14 @@ This is coalescing, not general reachability-based dead stripping.
 Nlist references, section-relative pointer fixups, local alternate entries and
 explicit SUBTRACTOR pairs bind to the winning identity and interior offset.
 AMD64 local SIGNED/1/2/4 fields include their trailing immediate-byte bias.
-One-past pointers to a final weak atom are supported. Interior local GOT and
-indirect-table aliases require additional handling. Constants already resolved
-by the assembler remain numeric constants; missing relocations cannot be
-reconstructed from their contents.
+One-past pointers to a final weak atom are supported. Local nlist aliases also
+work through AMD64 GOT_LOAD/GOT and ARM64 GOTPAGE/GOTPAGEOFF/POINTER_TO_GOT,
+indirect pointers and regenerated stubs. The alias offset is applied to the
+selected target before allocating its GOT cell or branch island; it does not
+change the relocation's field addend. Repeated references to the same interior
+address share a cell. Section-ordinal local GOT/instruction encodings remain
+unsupported. Constants already resolved by the assembler remain numeric
+constants; missing relocations cannot be reconstructed from their contents.
 
 Ordinary initialization/finalization arrays remain independent sections and
 call their selected functions. Discarding coalesced code from an input that
@@ -47,6 +51,15 @@ Apple system-linked executables use the same probes, including equivalent
 section-relative encodings. Apple `ld -dead_strip` is the complete native
 control: LLVM 22 LLD retains the original location for the tested named local
 alternate-entry pointer, while Apple rebinds it to the selected atom.
+
+Interior-alias probes additionally check named field/one-past pointers, an
+alternate function entry, both LOCAL-marker and nlist indirect-pointer forms,
+archive selection, failed-link retry and retained providers. Portable checks
+include near/distant short and padded stubs and target-address overflow. The
+Apple interior-alias control uses equivalent ordinary pointer storage and a
+GOT tail call because the system linker rejects these raw symboled indirect
+section inputs. It executes the same pointer-identity and function-call probe;
+the loader's indirect-table tests execute the original raw sections.
 
 ## Forwarding aliases
 

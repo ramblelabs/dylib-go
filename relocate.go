@@ -107,6 +107,15 @@ func (im *image) relocate(o *object, r relocation) error {
 	if e != nil {
 		return e
 	}
+	if r.targetOffset != 0 {
+		if o.info.Format != "Mach-O" || r.local || r.pair >= 0 || !machoAtomAddressRelocation(o, r) {
+			return fmt.Errorf("invalid Mach-O atom target offset")
+		}
+		if r.targetOffset > uint64(^uintptr(0)-s) {
+			return fmt.Errorf("Mach-O atom target address overflow")
+		}
+		s += uintptr(r.targetOffset)
+	}
 	if o.info.Format == "ELF" && o.info.Arch == "arm64" && s == 0 {
 		var done bool
 		s, done, e = im.elfARM64Weak(o, r, b, p)
