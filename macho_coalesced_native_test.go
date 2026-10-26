@@ -185,16 +185,10 @@ func TestNativeMachOCoalescedUnwind(t *testing.T) {
 					defer s.Close()
 					load(t, s, weak, strong, probe)
 					err := s.Link("coal_check")
-					if mode == "retained" {
-						if err == nil || !strings.Contains(err.Error(), "coalesced code discard with retained unwind") || s.image != nil {
-							t.Fatal("unqualified coalesced frames accepted", err)
-						}
-					} else {
-						if err != nil {
-							t.Fatal(err)
-						}
-						call(t, s, "coal_check", 20, 22, 42)
+					if err != nil {
+						t.Fatal(err)
 					}
+					call(t, s, "coal_check", 20, 22, 42)
 				})
 			}
 		})

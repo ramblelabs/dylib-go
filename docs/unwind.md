@@ -159,6 +159,15 @@ initialization if it is missing.
 The metadata-only `S_COALESCED` type of `__eh_frame` is accepted without
 extending general Mach-O symbol/section coalescing.
 
+For the [bounded coalesced weak atoms](macho.md#coalesced-weak-atoms), selection
+prunes losing FDEs, unused CIEs and compact records before dependency discovery.
+Retained records repair explicit ARM64 anchors and implicit AMD64 PC/LSDA
+fields. Private LSDA tables used only by losing frames lose their fixups and
+definitions while keeping unused padding; shared live tables retain their
+original offsets. Pruning rejects crossing code ranges, externally referenced
+rewritten metadata and missing private table boundaries. Native C++ tests check
+throw/catch, cleanup, retry, retirement and independent Apple-linked controls.
+
 Raw Mach-O also accepts retained `__compact_unwind` records. Go validates their
 function ranges, native ownership, LSDA storage and saved-register encodings, then
 builds regular `__unwind_info` pages in read-only native image storage. A baseline
