@@ -24,9 +24,7 @@ extern "C" COAL_FRAME int coal_frame_keep(int a, int b) {
     DYLIB_CXX_DWARF();
     cxx_save(reinterpret_cast<char *>(&coal_frame_keep) + 4);
     FrameGuard guard;
-    try { return cxx_host_throw(a, b); }
-    catch (int value) { return value; }
-    catch (double value) { return int(value); }
+    return cxx_host_throw(a, b);
 }
 extern "C" COAL_FRAME int coal_frame_tail(int a, int b) {
     DYLIB_CXX_DWARF();
@@ -35,7 +33,10 @@ extern "C" COAL_FRAME int coal_frame_tail(int a, int b) {
 }
 extern "C" int coal_frame_root(int a, int b) {
     DYLIB_CXX_DWARF();
-    volatile int value = coal_frame_keep(a, b);
+    volatile int value;
+    try { value = coal_frame_keep(a, b); }
+    catch (int result) { value = result; }
+    catch (double result) { value = int(result); }
     if (coal_frame_drop(a, b) != a + b || coal_frame_tail(a, b) != a + b) return -10;
     return value;
 }
