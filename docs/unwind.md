@@ -169,6 +169,12 @@ original offsets. Pruning rejects crossing code ranges, externally referenced
 rewritten metadata and missing private table boundaries. Native C++ tests check
 throw/catch, cleanup, retry, retirement and independent Apple-linked controls.
 
+For bounded public alias groups, FDE and compact function PCs bind to the
+original storage owner before independently overridden aliases lose their
+dependencies. This retains the cleanup frame of a surviving body even when
+another public name at its address selects a different definition. Personality
+pointers keep their public-name binding.
+
 Raw Mach-O also accepts retained `__compact_unwind` records. Go validates their
 function ranges, native ownership, LSDA storage and saved-register encodings, then
 builds regular `__unwind_info` pages in read-only native image storage. A baseline

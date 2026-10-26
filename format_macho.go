@@ -200,7 +200,7 @@ func parseMachO(name string, b []byte) (*file, error) {
 	if err := bindMachOIndirectTables(o, f); err != nil {
 		return nil, err
 	}
-	if err := configureMachOCoalescing(o, f); err != nil {
+	if err := configureMachOCoalescing(o, f, b); err != nil {
 		o.unsupported("Mach-O coalesced atoms: " + err.Error())
 	}
 	return finish(o), nil

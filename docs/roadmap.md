@@ -10,7 +10,7 @@ The CLI now accepts Go-style signature declarations and typed invocations throug
 
 | Coverage area | Work still required |
 | --- | --- |
-| Current 64-bit raw targets | Remaining relocations, Mach-O general coalescing, remaining lifecycle forms, remaining native TLS models, and remaining POSIX/Mach-O unwind registration; external `N_INDR` aliases, eager indirect pointers/short and padded stubs, and optional Windows/Linux/macOS C frame tables plus the Linux C++ DWARF and macOS C++ DWARF/compact exception subsets are implemented |
+| Current 64-bit raw targets | Remaining relocations, remaining Mach-O atom/alias forms, remaining lifecycle forms, remaining native TLS models, and remaining POSIX/Mach-O unwind registration; external `N_INDR` aliases, eager indirect pointers/short and padded stubs, and optional Windows/Linux/macOS C frame tables plus the Linux C++ DWARF and macOS C++ DWARF/compact exception subsets are implemented |
 | Windows ARM64 raw objects | Nonstandard import tables, remaining relocations/lifecycle forms, and language exception handlers; C frame tables are optional |
 | 386 and additional ISAs | 386 executes C cdecl on Linux/Windows with Go; Windows 386 stdcall/fastcall/thiscall and Windows amd64/386 compiled vectorcall bridges are implemented; other conventions and llgo 386 qualification remain. Additional ISAs need linker/ABI backends and execution tests |
 | BSD and Apple mobile hosts | Native OS backend, ABI/runtime integration, platform policy compatibility, and device tests |
@@ -69,7 +69,8 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Mach-O coalesced interior local aliases through GOT, indirect pointers and regenerated stubs, retaining the selected field/function offset across object/archive selection and provider leases.
 - [x] Associated Mach-O coalesced-code DWARF/compact unwind pruning, unused CIE/LSDA dependency removal, retained pointer/anchor repair and C++ exception execution across object/archive selection, retry and retirement.
 - [x] Bounded ordinary Mach-O code/data/BSS weak-atom discard with subsections-via-symbols, retaining strong/private neighbors and unqualified alias-bearing storage; native pointer, lifecycle, BSS and C++ unwind calls plus Apple controls.
-- [ ] Remaining relocations on existing targets; Mach-O general coalescing and authenticated stubs.
+- [x] Bounded public Mach-O alias groups, independent name overrides, canonical local references, interior/one-past forwarding through N_INDR and GOT, losing dependencies, lifecycle/lease ordering and retained C++ unwind PCs.
+- [ ] Remaining relocations on existing targets; ambiguous/unbounded Mach-O atom forms and authenticated stubs.
 - [x] Legacy ELF `.ctors/.dtors` pointer tables, priorities, sentinels, and mixed modern-array execution.
 - [x] COFF integer-returning CRT initializers, permanent failure state, and owned exit-registration cleanup.
 - [x] Mach-O linker-resolved initializer offsets, original-image rebasing, zero offsets, mixed pointer tables, lazy archives and native macOS Go/llgo execution.

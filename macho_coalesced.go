@@ -1,6 +1,7 @@
 package dylib
 
 import (
+	"bytes"
 	"debug/macho"
 	"fmt"
 	"math"
@@ -14,8 +15,13 @@ type machoCoalescedAtom struct {
 	start, end   uint64
 }
 
-func configureMachOCoalescing(o *object, f *macho.File) error {
+func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 	var atoms []machoCoalescedAtom
+	type publicAlias struct {
+		index, key int
+		offset     uint64
+	}
+	var aliases []publicAlias
 	bySection := make(map[int][]int)
 	if f.Symtab != nil {
 		for i, s := range o.symbols[:len(f.Symtab.Syms)] {
@@ -47,7 +53,7 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 		}
 		byOffset := make(map[uint64][]int)
 		starts := []uint64{0, input.Size}
-		var publicAlternates []uint64
+		var publicAlternates []int
 		if f.Symtab == nil {
 			return fmt.Errorf("%s has no symbol boundaries", input.Name)
 		}
@@ -56,17 +62,14 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 			if s.value > input.Size {
 				return fmt.Errorf("%s symbol outside section", input.Name)
 			}
-			if strict && s.global && s.weak && s.value == input.Size {
-				return fmt.Errorf("%s is a zero-size coalesced weak definition", s.name)
-			}
-			if f.Symtab.Syms[i].Desc&0x200 != 0 { // N_ALT_ENTRY shares the preceding atom.
-				if strict && s.global {
-					return fmt.Errorf("%s is a public alternate entry", s.name)
-				}
+			if f.Symtab.Syms[i].Desc&0x200 != 0 { // N_ALT_ENTRY shares storage rather than starting an atom.
 				if s.global {
-					publicAlternates = append(publicAlternates, s.value)
+					publicAlternates = append(publicAlternates, i)
 				}
 				continue
+			}
+			if strict && s.global && s.weak && s.value == input.Size {
+				return fmt.Errorf("%s is a zero-size coalesced weak definition", s.name)
 			}
 			if f.Flags&macho.FlagSubsectionsViaSymbols == 0 && s.value != 0 {
 				return fmt.Errorf("%s needs subsections_via_symbols for multiple boundaries", input.Name)
@@ -75,46 +78,81 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 			starts = append(starts, s.value)
 		}
 		sort.Slice(starts, func(i, j int) bool { return starts[i] < starts[j] })
-		sort.Slice(publicAlternates, func(i, j int) bool { return publicAlternates[i] < publicAlternates[j] })
+		sort.SliceStable(publicAlternates, func(i, j int) bool {
+			return o.symbols[publicAlternates[i]].value < o.symbols[publicAlternates[j]].value
+		})
 		for i, start := range starts {
 			if start == input.Size || i+1 == len(starts) || starts[i+1] == start {
 				continue
 			}
-			for _, key := range byOffset[start] {
-				s := o.symbols[key]
-				if !s.global || !s.weak {
+			end := starts[i+1]
+			key := -1
+			var public []int
+			for _, index := range byOffset[start] {
+				s := o.symbols[index]
+				if !s.global {
 					continue
 				}
-				globals := 0
-				for _, i := range byOffset[start] {
-					if o.symbols[i].global {
-						globals++
+				public = append(public, index)
+				// Apple ld gives storage to the last weak name in name order;
+				// a strong name keeps the storage when a weak alias is replaced.
+				choose := key < 0 || o.symbols[key].weak && !s.weak
+				if key >= 0 && o.symbols[key].weak == s.weak {
+					previous, err := machoRawSymbolName(f, data, key)
+					if err != nil {
+						return err
 					}
-				}
-				// LLVM ARM64 emits local ltmp aliases at section starts. They
-				// share this atom; only competing public identities are ambiguous.
-				if s.name == "" || f.Symtab.Syms[key].Desc&0x80 == 0 || globals != 1 {
-					if ordinary {
-						continue
+					candidate, err := machoRawSymbolName(f, data, index)
+					if err != nil {
+						return err
 					}
-					return fmt.Errorf("%s needs one named public weak definition", s.name)
+					choose = previous < candidate
 				}
-				alternate := sort.Search(len(publicAlternates), func(i int) bool { return publicAlternates[i] >= start })
-				if alternate < len(publicAlternates) && publicAlternates[alternate] <= starts[i+1] {
-					continue // Preserve ordinary alias-bearing storage until its complete identity is modeled.
+				if choose {
+					key = index
 				}
-				atom := machoCoalescedAtom{section: section, key: key, start: start, end: starts[i+1]}
-				atoms = append(atoms, atom)
+			}
+			ambiguous := false
+			first := sort.Search(len(publicAlternates), func(i int) bool { return o.symbols[publicAlternates[i]].value >= start })
+			for _, index := range publicAlternates[first:] {
+				value := o.symbols[index].value
+				if value > end {
+					break
+				}
+				if value != input.Size && len(byOffset[value]) != 0 {
+					ambiguous = true
+				}
+				if value < end || value == input.Size {
+					public = append(public, index)
+				}
+			}
+			weak, valid := false, key >= 0
+			names := make(map[string]bool)
+			for _, index := range public {
+				s := o.symbols[index]
+				weak = weak || s.weak
+				valid = valid && s.name != "" && !names[s.name] && (!s.weak || f.Symtab.Syms[index].Desc&0x80 != 0)
+				names[s.name] = true
+			}
+			if !weak {
+				continue
+			}
+			if !valid || ambiguous {
+				if ordinary {
+					continue
+				}
+				return fmt.Errorf("%s has ambiguous public coalesced aliases", input.Name)
+			}
+			atoms = append(atoms, machoCoalescedAtom{section: section, key: key, start: start, end: end})
+			for _, index := range public {
+				if index != key {
+					aliases = append(aliases, publicAlias{index, key, o.symbols[index].value - start})
+				}
 			}
 		}
 	}
 	if len(atoms) == 0 {
 		return nil
-	}
-	for i, s := range o.symbols[:len(f.Symtab.Syms)] {
-		if atom := machoAtomAt(atoms, s.section, s.value); atom != nil && i != atom.key && s.global {
-			return fmt.Errorf("%s has a public alternate entry", o.symbols[atom.key].name)
-		}
 	}
 	// Normalize references before any discard decisions. This also preserves
 	// local pointers to a winning definition in another object, not dead bytes.
@@ -148,7 +186,7 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 				if atom == nil && s.section > 0 && s.section < len(o.sections) && o.sections[s.section] != nil && s.value == o.sections[s.section].size && s.value != 0 && !s.global && *operand.index < len(f.Symtab.Syms) && f.Symtab.Syms[*operand.index].Desc&0x200 != 0 {
 					atom = machoAtomAt(atoms, s.section, s.value-1) // A named alternate may be one-past.
 				}
-				if atom == nil || *operand.index == atom.key {
+				if atom == nil || *operand.index == atom.key || s.global {
 					continue
 				}
 				if operand.index == &r.symbol && r.pair < 0 && machoAtomAddressRelocation(o, r) {
@@ -168,8 +206,41 @@ func configureMachOCoalescing(o *object, f *macho.File) error {
 		}
 		relocs[i] = r
 	}
+	for _, a := range aliases {
+		s := &o.symbols[a.index]
+		s.section, s.value = -5, 0
+		s.forward = &symbolForward{target: a.key, offset: a.offset, storage: true}
+	}
 	o.machoAtoms, o.relocs = atoms, relocs
 	return nil
+}
+
+// debug/macho normalizes some dotted names. Storage ordering uses the actual
+// string-table spelling, before the public API removes a C underscore.
+func machoRawSymbolName(f *macho.File, data []byte, index int) (string, error) {
+	cmd := f.Symtab.Raw()
+	if len(cmd) < 24 || index < 0 || index >= len(f.Symtab.Syms) {
+		return "", fmt.Errorf("invalid Mach-O alias symbol table")
+	}
+	width := uint64(12)
+	if f.Magic == macho.Magic64 {
+		width = 16
+	}
+	entry := uint64(f.ByteOrder.Uint32(cmd[8:])) + uint64(index)*width
+	start, size := uint64(f.ByteOrder.Uint32(cmd[16:])), uint64(f.ByteOrder.Uint32(cmd[20:]))
+	if entry > uint64(len(data)) || uint64(len(data))-entry < 4 || start > uint64(len(data)) || size > uint64(len(data))-start {
+		return "", fmt.Errorf("invalid Mach-O alias string table")
+	}
+	offset := uint64(f.ByteOrder.Uint32(data[entry:]))
+	if offset >= size {
+		return "", fmt.Errorf("invalid Mach-O alias name offset")
+	}
+	b := data[start+offset : start+size]
+	end := bytes.IndexByte(b, 0)
+	if end < 0 {
+		return "", fmt.Errorf("unterminated Mach-O alias name")
+	}
+	return string(b[:end]), nil
 }
 
 func machoAtomAt(atoms []machoCoalescedAtom, section int, offset uint64) *machoCoalescedAtom {
@@ -264,11 +335,23 @@ func coalesceMachOAtoms(objects []*object) error {
 	if !found {
 		return nil
 	}
+	for _, o := range objects {
+		if err := o.canonicalizeMachOAliasFrames(); err != nil {
+			return err
+		}
+	}
 	defs, err := definitions(objects)
 	if err != nil {
 		return err
 	}
 	for _, o := range objects {
+		// A replaced weak alias must not keep its original owner as a
+		// dependency. Its relocations still bind through the selected name.
+		for i, s := range o.symbols {
+			if s.forward != nil && s.forward.storage && s.weak && defs[s.name] != (definition{o, i}) {
+				o.symbols[i].section, o.symbols[i].value, o.symbols[i].forward = 0, 0, nil
+			}
+		}
 		var losing []machoCoalescedAtom
 		for _, atom := range o.machoAtoms {
 			if o.sections[atom.section] == nil || o.symbols[atom.key].section <= 0 {

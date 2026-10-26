@@ -128,12 +128,15 @@ func TestMachOOrdinaryBoundaries(t *testing.T) {
 					t.Fatal(err)
 				}
 				o := parseMachoAliases(t, b)
-				wantAtoms := 1
+				wantAtoms := 2
+				if mode == "zero_size" {
+					wantAtoms = 1
+				}
 				if mode == "no_subsections" {
 					wantAtoms = 0
 				}
 				if len(o.machoAtoms) != wantAtoms {
-					t.Fatal("unqualified boundary became discardable", len(o.machoAtoms))
+					t.Fatal("unexpected bounded alias ownership", len(o.machoAtoms))
 				}
 				relocs, symbols := append([]relocation(nil), o.relocs...), append([]symbol(nil), o.symbols...)
 				name := "ordinary_sentinel"

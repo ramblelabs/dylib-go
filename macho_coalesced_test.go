@@ -395,7 +395,20 @@ func TestMachOCoalescedValidation(t *testing.T) {
 						}
 						le.PutUint32(b[int(sec.Reloff):], offset)
 					}
-					f, err := parse("invalid-coalesced.o", b)
+					f, err := parse("coalesced-boundaries.o", b)
+					if name == "weak_alternate" || name == "same_address_alias" || name == "public_alternate" || name == "public_end" {
+						if err != nil || len(f.info.Unsupported) != 0 {
+							t.Fatalf("bounded public alias: %v, %+v", err, f)
+						}
+						forward := false
+						for _, sym := range f.obj.symbols {
+							forward = forward || sym.forward != nil && sym.forward.storage
+						}
+						if !forward {
+							t.Fatal("public alias has no storage identity")
+						}
+						return
+					}
 					if err == nil && len(f.info.Unsupported) == 0 {
 						t.Fatal("unqualified coalescing accepted")
 					}

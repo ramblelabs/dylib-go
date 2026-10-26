@@ -46,10 +46,16 @@ func (im *image) externalSymbol(o *object, name string) uintptr {
 // or explicitly provided native symbol wins over a COFF weak fallback.
 // Cycles are detected after archive selection has stabilized.
 func (im *image) resolveDefinition(o *object, index int) (definition, error) {
+	d, _, err := im.resolveAddressDefinition(o, index)
+	return d, err
+}
+
+func (im *image) resolveAddressDefinition(o *object, index int) (definition, uint64, error) {
+	var offset uint64
 	seen := make(map[definition]bool)
 	for {
 		if index < 0 || index >= len(o.symbols) {
-			return definition{}, fmt.Errorf("invalid symbol index %d", index)
+			return definition{}, 0, fmt.Errorf("invalid symbol index %d", index)
 		}
 		d := definition{o, index}
 		v := d.sym()
@@ -61,21 +67,28 @@ func (im *image) resolveDefinition(o *object, index int) (definition, error) {
 		}
 		if v.forward != nil {
 			if seen[d] {
-				return definition{}, fmt.Errorf("Mach-O indirect alias cycle at %s", v.name)
+				return definition{}, 0, fmt.Errorf("Mach-O indirect alias cycle at %s", v.name)
 			}
 			seen[d] = true
+			if v.forward.offset > ^uint64(0)-offset {
+				return definition{}, 0, fmt.Errorf("Mach-O alias offset overflow at %s", v.name)
+			}
+			offset += v.forward.offset
 			index = v.forward.target
 			continue
 		}
+		if offset != 0 && (v.tls || nativeTLSSection(o, v) != nil) {
+			return definition{}, 0, fmt.Errorf("Mach-O offset alias cannot target native TLS %s", v.name)
+		}
 		if v.section != 0 || v.global && elfOwnedGOT(o.info, v.name) || im.externalSymbol(o, v.name) != 0 {
-			return d, nil
+			return d, offset, nil
 		}
 		alias, ok := im.aliases[v.name]
 		if !ok {
-			return d, nil
+			return d, offset, nil
 		}
 		if seen[alias] {
-			return definition{}, fmt.Errorf("COFF weak alias cycle at %s", v.name)
+			return definition{}, 0, fmt.Errorf("COFF weak alias cycle at %s", v.name)
 		}
 		seen[alias] = true
 		o, index = alias.o, alias.sym().alias.target

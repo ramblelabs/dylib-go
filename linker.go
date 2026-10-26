@@ -1098,10 +1098,21 @@ func (im *image) symbol(o *object, index int, local bool) (uintptr, error) {
 	if index < 0 || index >= len(o.symbols) {
 		return 0, fmt.Errorf("invalid symbol index %d", index)
 	}
-	d, err := im.resolveDefinition(o, index)
+	d, offset, err := im.resolveAddressDefinition(o, index)
 	if err != nil {
 		return 0, err
 	}
+	address, err := im.definitionAddress(d)
+	if err != nil {
+		return 0, err
+	}
+	if offset > uint64(^uintptr(0))-uint64(address) || offset != 0 && address == 0 {
+		return 0, fmt.Errorf("Mach-O alias address overflow or missing storage")
+	}
+	return address + uintptr(offset), nil
+}
+
+func (im *image) definitionAddress(d definition) (uintptr, error) {
 	o, s := d.o, d.sym()
 	switch s.section {
 	case -4:

@@ -34,18 +34,22 @@ func TestMachOOrdinaryFramePruning(t *testing.T) {
 	testMachOFramePruning(t, true)
 }
 
-func testMachOFramePruning(t *testing.T, ordinary bool) {
-	var frameFlags, deadFlags []string
+func testMachOFramePruning(t *testing.T, ordinary bool, public ...bool) {
+	var frameFlags, deadFlags, strongFlags []string
 	if ordinary {
 		frameFlags = []string{"-DDYLIB_FRAME_ORDINARY"}
 		deadFlags = []string{"-DDYLIB_COAL_KIND=regular"}
+	}
+	if len(public) != 0 && public[0] {
+		frameFlags = append(frameFlags, "-DDYLIB_FRAME_PUBLIC_ALIASES")
+		strongFlags = []string{"-DDYLIB_FRAME_PUBLIC_ALIASES"}
 	}
 	for _, target := range []string{"x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		for _, opt := range []string{"-O0", "-O2"} {
 			for _, mode := range []string{"dwarf", "compact"} {
 				t.Run(target+"/"+opt+"/"+mode, func(t *testing.T) {
 					_, weak := machoCoalescedFrames(t, target, opt, mode, false, frameFlags...)
-					_, strong := machoCoalescedFrames(t, target, opt, mode, true)
+					_, strong := machoCoalescedFrames(t, target, opt, mode, true, strongFlags...)
 					_, deadBytes := machoCoalescedFixture(t, target, "macho_coalesced_dead_frame.S", deadFlags...)
 					dead := parseMachoAliases(t, deadBytes)
 					typeReference := false
@@ -308,18 +312,22 @@ func TestNativeMachOOrdinaryFrames(t *testing.T) {
 	testNativeMachOFrames(t, true)
 }
 
-func testNativeMachOFrames(t *testing.T, ordinary bool) {
+func testNativeMachOFrames(t *testing.T, ordinary bool, public ...bool) {
 	target := needMachOCoalescedNative(t)
-	var frameFlags, deadFlags []string
+	var frameFlags, deadFlags, strongFlags []string
 	if ordinary {
 		frameFlags = []string{"-DDYLIB_FRAME_ORDINARY"}
 		deadFlags = []string{"-DDYLIB_COAL_KIND=regular"}
+	}
+	if len(public) != 0 && public[0] {
+		frameFlags = append(frameFlags, "-DDYLIB_FRAME_PUBLIC_ALIASES")
+		strongFlags = []string{"-DDYLIB_FRAME_PUBLIC_ALIASES"}
 	}
 	for _, opt := range []string{"-O0", "-O2"} {
 		for _, mode := range []string{"dwarf", "compact"} {
 			t.Run(opt+"/"+mode, func(t *testing.T) {
 				weak, _ := machoCoalescedFrames(t, target, opt, mode, false, frameFlags...)
-				strong, _ := machoCoalescedFrames(t, target, opt, mode, true)
+				strong, _ := machoCoalescedFrames(t, target, opt, mode, true, strongFlags...)
 				dead, _ := machoCoalescedFixture(t, target, "macho_coalesced_dead_frame.S", deadFlags...)
 				unused := machoCoalescedAssembly(t, target, ".data\n.globl _coal_frame_unused\n_coal_frame_unused:\n.quad _coal_frame_poison\n")
 				host := filepath.Join(t.TempDir(), "host.dylib")
@@ -372,6 +380,9 @@ func testNativeMachOFrames(t *testing.T, ordinary bool) {
 							for _, a := range []int32{20, -20} {
 								call(t, observer, "cxx_events", 1, 0, 0)
 								call(t, s, "coal_frame_root", a, 42-a, 42)
+								if len(public) != 0 && public[0] {
+									call(t, s, "coal_frame_keep", a, 42-a, 42)
+								}
 								call(t, observer, "cxx_events", 1, 0, 1)
 								call(t, observer, "cxx_has_frame", 0, 0, 1)
 							}
@@ -466,5 +477,17 @@ func testNativeMachOFrames(t *testing.T, ordinary bool) {
 				}
 			})
 		}
+	}
+}
+
+func TestMachOPublicAliasFramePruning(t *testing.T) {
+	for _, kind := range []string{"regular", "coalesced"} {
+		t.Run(kind, func(t *testing.T) { testMachOFramePruning(t, kind == "regular", true) })
+	}
+}
+
+func TestNativeMachOPublicAliasFrames(t *testing.T) {
+	for _, kind := range []string{"regular", "coalesced"} {
+		t.Run(kind, func(t *testing.T) { testNativeMachOFrames(t, kind == "regular", true) })
 	}
 }

@@ -136,7 +136,11 @@ type symbol struct {
 
 // A forwarding definition owns its name but takes the address of its target.
 // Unlike a COFF weak fallback, it cannot be overridden by an external address.
-type symbolForward struct{ target int }
+type symbolForward struct {
+	target  int
+	offset  uint64
+	storage bool // Public Mach-O alias of a bounded atom, rather than N_INDR.
+}
 
 // COFF weak externals reference a fallback by original symbol-table index.
 type weakAlias struct {
