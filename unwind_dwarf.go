@@ -43,6 +43,8 @@ type framePolicy struct {
 	fixup      func(uint64, byte) error
 	lsdaFixup  func(uint64, byte) error
 	record     func(start, length uint64, fde uintptr, personality bool) error
+
+	personalityFixup func(uint64, byte) error
 }
 
 // Keep a C-only validator for metadata callers that reject language augmentation.
@@ -134,6 +136,9 @@ func (im *image) validateFrameRecords(b []byte, imageOffset uint64, policy frame
 						}
 						var encoding byte
 						encoding, err = data.byte()
+						if err == nil && policy.personalityFixup != nil {
+							err = policy.personalityFixup(dataOffset+uint64(n)-uint64(len(data.b))-imageOffset, encoding)
+						}
 						if err == nil {
 							var pointer uint64
 							pointer, err = im.framePointer(&data, encoding, dataOffset+uint64(n)-uint64(len(data.b)))

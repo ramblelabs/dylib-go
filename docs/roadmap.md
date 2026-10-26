@@ -67,6 +67,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Mach-O short/padded symbol stubs with image-owned distant-target islands, adjacent entries and native scalar/indirect-record calls through objects, archives and retained providers.
 - [x] Bounded Mach-O `S_COALESCED` weak atoms, losing-fixup discard, canonical local/alternate/one-past references, explicit subtractors, real weak/common priority and object/archive retry with native Apple linker controls.
 - [x] Mach-O coalesced interior local aliases through GOT, indirect pointers and regenerated stubs, retaining the selected field/function offset across object/archive selection and provider leases.
+- [x] Associated Mach-O coalesced-code DWARF/compact unwind pruning, unused CIE/LSDA dependency removal, retained pointer/anchor repair and C++ exception execution across object/archive selection, retry and retirement.
 - [ ] Remaining relocations on existing targets; Mach-O general coalescing and authenticated stubs.
 - [x] Legacy ELF `.ctors/.dtors` pointer tables, priorities, sentinels, and mixed modern-array execution.
 - [x] COFF integer-returning CRT initializers, permanent failure state, and owned exit-registration cleanup.

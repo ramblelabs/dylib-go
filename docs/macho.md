@@ -37,11 +37,25 @@ unsupported. Constants already resolved by the assembler remain numeric
 constants; missing relocations cannot be reconstructed from their contents.
 
 Ordinary initialization/finalization arrays remain independent sections and
-call their selected functions. Discarding coalesced code from an input that
-still carries DWARF/compact unwind metadata is rejected: associated-record
-pruning needs separate support. Default loading discards that optional metadata
-and supports the tested nonthrowing leaf calls. Weak bodies in ordinary regular
-sections still use normal symbol selection without atom-fixup discard.
+call their selected functions. With `Options{RegisterUnwind: true}`, losing
+code also discards its DWARF FDEs, unused CIEs and compact unwind entries before
+dependency discovery. Retained records keep corrected CIE back-references,
+pointer fields and relocations, including AMD64 implicit PC/LSDA pointers and
+ARM64 subtractor anchors. Exception tables referenced only by losing frames
+drop their fixups and private definitions; their bytes remain unused padding.
+Shared live exception tables retain their storage. Default loading continues
+to discard optional unwind metadata. Weak bodies in ordinary regular sections
+still use normal symbol selection without atom-fixup discard.
+
+Pruning uses the existing supported DWARF/compact encodings and at most 65,536
+records per section. Nonoverlapping original sections and the scratch GOT
+must fit the 64 MiB image limit. A frame cannot straddle a losing atom boundary;
+discarded LSDA needs private symbol-delimited table boundaries. Incoming live
+references into discarded LSDA, external references into shrinking metadata,
+sized frame symbols and unsupported section-local frame references are rejected.
+Native C++ exception tests cover retained catch/cleanup frames and removed
+RTTI/personality dependencies, both input orders, objects/archives, failed-link
+and registration retry, retirement and Apple system-linked controls.
 
 Tests cover both Mach-O architectures on every native CI host and execute
 O0/O2 objects/archives with Go and llgo on macOS. They check strong/weak/common

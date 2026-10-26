@@ -245,23 +245,19 @@ func coalesceMachOAtoms(objects []*object) error {
 	}
 	for _, o := range objects {
 		var losing []machoCoalescedAtom
-		unwind := false
-		for _, section := range o.sections {
-			unwind = unwind || section != nil && (section.name == "__eh_frame" || section.name == "__compact_unwind")
-		}
 		for _, atom := range o.machoAtoms {
 			if o.sections[atom.section] == nil || o.symbols[atom.key].section <= 0 {
 				continue // Default Load may have removed unwind-only sections.
 			}
 			if winner := defs[o.symbols[atom.key].name]; winner != (definition{o, atom.key}) {
 				losing = append(losing, atom)
-				if o.sections[atom.section].exec && unwind {
-					return fmt.Errorf("coalesced code discard with retained unwind metadata is unsupported")
-				}
 			}
 		}
 		if len(losing) == 0 {
 			continue
+		}
+		if err := o.pruneMachOUnwind(losing); err != nil {
+			return err
 		}
 		for i, s := range o.symbols {
 			if machoAtomAt(losing, s.section, s.value) != nil {
