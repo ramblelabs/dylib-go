@@ -9,7 +9,7 @@ Go and llgo use independent workflows and separately compiled test processes:
 Workflows run on pushes to main, pull requests, and manual dispatch. Pure Go jobs set `CGO_ENABLED=0` and run parser, error, and execution-refusal tests in a process compiled for the target architecture.
 
 Native Go suites allow 20 minutes per test package within their 40-minute jobs.
-macOS Intel allows 30 minutes per package within a 75-minute job: its complete
+macOS Intel allows 30 minutes per package within a 90-minute job: its complete
 compiler qualification package already takes about 19 minutes on a passing run,
 leaving too little margin under the former 20-minute limit. Both ordinary and
 race suites still run in full.
