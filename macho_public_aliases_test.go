@@ -3,8 +3,10 @@ package dylib
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -286,11 +288,11 @@ func TestNativeMachOPublicAliasControls(t *testing.T) {
 										inputs = append(selected, weak)
 									}
 									exe := filepath.Join(t.TempDir(), "control")
-									args := []string{"--target=" + target, "-isysroot", sdk, "-Wl,-syslibroot," + sdk, "-Wl,-dead_strip", "testdata/macho_public_aliases.c", "-DDYLIB_PUBLIC_STANDALONE", fmt.Sprintf("-DDYLIB_PUBLIC_OVERRIDE=%d", mode)}
+									args := []string{"--target=" + target, "-isysroot", sdk, "-Wl,-syslibroot," + sdk, "-Wl,-dead_strip", "testdata/macho_public_aliases.c", "-DDYLIB_PUBLIC_STANDALONE", "-DDYLIB_PUBLIC_APPLE_CONTROL", fmt.Sprintf("-DDYLIB_PUBLIC_OVERRIDE=%d", mode)}
 									args = append(args, flags...)
 									args = append(args, inputs...)
 									command(t, compiler(), append(args, "-o", exe)...)
-									command(t, exe)
+									machoPublicAppleObservation(t, exe, form, mode)
 								})
 							}
 						})
@@ -298,5 +300,48 @@ func TestNativeMachOPublicAliasControls(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// The library's strong-owner policy is fixed. Independent system controls
+// report either fully checked Apple policy, rather than changing loader tests.
+func machoPublicAppleObservation(t *testing.T, exe string, form, mode int) {
+	t.Helper()
+	if form != 2 || mode != 2 {
+		command(t, exe)
+		return
+	}
+	output, err := exec.Command(exe).CombinedOutput()
+	if err != nil {
+		t.Fatalf("Apple mixed-owner control: %v\n%s", err, output)
+	}
+	policy := strings.TrimSpace(string(output))
+	if policy != "Apple mixed owner: shared replacement" && policy != "Apple mixed owner: retained strong" {
+		t.Fatal("unrecognized Apple mixed-owner result", policy)
+	}
+	t.Log(policy)
+}
+
+func TestNativeMachOPublicAliasLegacyObservation(t *testing.T) {
+	target := needMachOCoalescedNative(t)
+	sdk := machoCoalescedSDK(t)
+	for _, opt := range []string{"-O0", "-O2"} {
+		for _, kind := range []string{"regular", "coalesced"} {
+			t.Run(opt+"/"+kind, func(t *testing.T) {
+				// All-weak input reproduces the older linker's observed address pattern
+				// on newer hosts too; this qualifies the control observer's legacy arm.
+				weak, _ := machoCoalescedFixture(t, target, "macho_public_aliases.S", machoPublicFlags(kind, 0, opt)...)
+				providers := machoPublicProviders(t, target)
+				exe := filepath.Join(t.TempDir(), "control")
+				args := []string{"--target=" + target, "-isysroot", sdk, "-Wl,-syslibroot," + sdk, "-Wl,-dead_strip", "testdata/macho_public_aliases.c", "-DDYLIB_PUBLIC_STANDALONE", "-DDYLIB_PUBLIC_APPLE_CONTROL", "-DDYLIB_PUBLIC_OVERRIDE=2"}
+				args = append(args, machoPublicFlags(kind, 2, opt)...)
+				args = append(args, weak, providers[1], "-o", exe)
+				command(t, compiler(), args...)
+				output, err := exec.Command(exe).CombinedOutput()
+				if err != nil || strings.TrimSpace(string(output)) != "Apple mixed owner: shared replacement" {
+					t.Fatalf("legacy Apple observer: %v\n%s", err, output)
+				}
+			})
+		}
 	}
 }

@@ -1,4 +1,7 @@
 #include <stdint.h>
+#ifdef DYLIB_PUBLIC_APPLE_CONTROL
+#include <stdio.h>
+#endif
 #ifndef DYLIB_PUBLIC_FORM
 #define DYLIB_PUBLIC_FORM 0
 #endif
@@ -41,6 +44,12 @@ int public_check(int mode, int value) {
         if (!(mode & 1)) a = 84;
 #endif
     }
+#if defined(DYLIB_PUBLIC_APPLE_CONTROL) && DYLIB_PUBLIC_FORM == 2
+    // Older Apple linkers move the strong a name with the replaced weak b
+    // storage. Newer linkers retain a's storage. Observe this only in the
+    // standalone system control; loader probes always require strong a == 9.
+    if (mode == 2 && pa == pb) a = 84;
+#endif
     if (*pa != a) return -3;
 #if DYLIB_PUBLIC_FORM == 5
     if (!(mode & 2) && (uintptr_t)pb != end) return -4;
@@ -61,6 +70,13 @@ __attribute__((destructor)) static void finalize(void) {
 #ifdef DYLIB_PUBLIC_STANDALONE
 int main(void) {
     int result = public_check(DYLIB_PUBLIC_OVERRIDE, 42);
+#if defined(DYLIB_PUBLIC_APPLE_CONTROL) && DYLIB_PUBLIC_FORM == 2 && DYLIB_PUBLIC_OVERRIDE == 2
+    long *volatile pa = public_a, *volatile pb = public_b;
+    puts(pa == pb ? "Apple mixed owner: shared replacement" : "Apple mixed owner: retained strong");
+    if (result != 42)
+        fprintf(stderr, "mixed-owner values: a=%ld b=%ld same=%d result=%d\n",
+                *pa, *pb, pa == pb, result);
+#endif
     return result == 42 ? 0 : -result;
 }
 #endif

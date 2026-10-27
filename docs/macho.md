@@ -14,8 +14,12 @@ storage identity.
 At one boundary, a strong public name owns the storage. An all-weak group uses
 the lexicographically last raw Mach-O name, before C underscore removal or
 `debug/macho` dotted-name normalization. Symbol-table order does not change
-that owner. Other public names forward to it while retaining their own weak
-or strong definition priority: replacing one alias does not automatically
+that owner. This strong-owner policy is fixed across hosts. Older Apple
+linkers can move a strong name with a replaced weak name when the weak name
+sorts last; standalone controls observe and validate that older policy as well
+as newer Apple behavior. Loader tests always require the strong name's original
+storage. Other public names forward to their owner while retaining their own
+weak or strong definition priority: replacing one alias does not automatically
 replace the storage. Public `N_ALT_ENTRY` names strictly inside an atom, or
 one-past its final section boundary, forward to the owner's selected address
 plus their original offset. A selected provider must have compatible data or
@@ -87,8 +91,8 @@ O0/O2 objects/archives with Go and llgo on macOS. They check strong/weak/common
 selection, reversed order, private/local/one-past pointer identity, explicit
 subtractor pairs, lazy poison dependencies, retry, lifecycle and unwind limits.
 Apple system-linked executables use the same probes, including equivalent
-section-relative encodings. Apple `ld -dead_strip` is the complete native
-control: LLVM 22 LLD retains the original location for the tested named local
+section-relative encodings. Apple `ld -dead_strip` supplies independent native
+controls, with the mixed-owner distinction above: LLVM 22 LLD retains the original location for the tested named local
 alternate-entry pointer, while Apple rebinds it to the selected atom.
 
 Interior-alias probes additionally check named field/one-past pointers, an
