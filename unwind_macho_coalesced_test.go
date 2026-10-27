@@ -44,11 +44,17 @@ func testMachOFramePruning(t *testing.T, ordinary bool, public ...bool) {
 		frameFlags = append(frameFlags, "-DDYLIB_FRAME_PUBLIC_ALIASES")
 		strongFlags = []string{"-DDYLIB_FRAME_PUBLIC_ALIASES"}
 	}
+	if len(public) > 1 && public[1] {
+		frameFlags = append(frameFlags, "-DDYLIB_FRAME_SHARED_ALIASES")
+	}
 	for _, target := range []string{"x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		for _, opt := range []string{"-O0", "-O2"} {
 			for _, mode := range []string{"dwarf", "compact"} {
 				t.Run(target+"/"+opt+"/"+mode, func(t *testing.T) {
 					_, weak := machoCoalescedFrames(t, target, opt, mode, false, frameFlags...)
+					if len(public) > 1 && public[1] {
+						assertMachOSharedFrameAlias(t, weak)
+					}
 					_, strong := machoCoalescedFrames(t, target, opt, mode, true, strongFlags...)
 					_, deadBytes := machoCoalescedFixture(t, target, "macho_coalesced_dead_frame.S", deadFlags...)
 					dead := parseMachoAliases(t, deadBytes)
@@ -323,10 +329,16 @@ func testNativeMachOFrames(t *testing.T, ordinary bool, public ...bool) {
 		frameFlags = append(frameFlags, "-DDYLIB_FRAME_PUBLIC_ALIASES")
 		strongFlags = []string{"-DDYLIB_FRAME_PUBLIC_ALIASES"}
 	}
+	if len(public) > 1 && public[1] {
+		frameFlags = append(frameFlags, "-DDYLIB_FRAME_SHARED_ALIASES")
+	}
 	for _, opt := range []string{"-O0", "-O2"} {
 		for _, mode := range []string{"dwarf", "compact"} {
 			t.Run(opt+"/"+mode, func(t *testing.T) {
-				weak, _ := machoCoalescedFrames(t, target, opt, mode, false, frameFlags...)
+				weak, weakObject := machoCoalescedFrames(t, target, opt, mode, false, frameFlags...)
+				if len(public) > 1 && public[1] {
+					assertMachOSharedFrameAlias(t, weakObject)
+				}
 				strong, _ := machoCoalescedFrames(t, target, opt, mode, true, strongFlags...)
 				dead, _ := machoCoalescedFixture(t, target, "macho_coalesced_dead_frame.S", deadFlags...)
 				unused := machoCoalescedAssembly(t, target, ".data\n.globl _coal_frame_unused\n_coal_frame_unused:\n.quad _coal_frame_poison\n")

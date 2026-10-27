@@ -11,7 +11,8 @@ that flag. Eligible groups have named public owners and at least one public
 weak definition. Local aliases and local `N_ALT_ENTRY` names share the group's
 storage identity.
 
-At one boundary, a strong public name owns the storage. An all-weak group uses
+At one boundary, a strong non-alternate public name owns the storage. If all
+non-alternate public names are weak, the owner uses
 the lexicographically last raw Mach-O name, before C underscore removal or
 `debug/macho` dotted-name normalization. Symbol-table order does not change
 that owner. This strong-owner policy is fixed across hosts. Older Apple
@@ -20,7 +21,13 @@ sorts last; standalone controls observe and validate that older policy as well
 as newer Apple behavior. Loader tests always require the strong name's original
 storage. Other public names forward to their owner while retaining their own
 weak or strong definition priority: replacing one alias does not automatically
-replace the storage. Public `N_ALT_ENTRY` names strictly inside an atom, or
+replace the storage. A public `N_ALT_ENTRY` at the same address as a
+non-alternate public owner belongs to the group starting there, including
+offset zero and a boundary between two atoms. It never belongs to the
+preceding atom. Alternate names do not compete for storage ownership, even
+when strong: replacing a weak owner moves its unoverridden strong alternate
+with the selected owner. Replacing only an alternate keeps the original
+owner and private pointers. Public `N_ALT_ENTRY` names strictly inside an atom, or
 one-past its final section boundary, forward to the owner's selected address
 plus their original offset. A selected provider must have compatible data or
 function-entry offsets. Offset/address overflow and nonzero offsets into
@@ -30,8 +37,8 @@ Ordinary sections require `MH_SUBSECTIONS_VIA_SYMBOLS`. Strong/private
 neighbors retain their bytes and fixups; zero-fill atoms need no backing file
 bytes. A wholly discarded BSS section needs no storage, and an entirely
 redundant archive member remains unselected. Missing owners, colliding
-normalized API names, public alternate entries at another non-alternate
-boundary (including a shared start), and zero-size unmarked weak definitions
+normalized API names, alternate entries sharing only a private boundary,
+and zero-size unmarked weak definitions
 remain outside bounded explicit coalescing. Ordinary inputs with these forms
 retain their prior storage/fixup behavior. Frame, compact-unwind and LSDA
 sections use associated-record pruning; native TLS and literal section models
@@ -124,6 +131,16 @@ input orders, objects/archives, dependency retries, constructor/destructor
 ordering, leased data after provider retirement and C++ RAII unwinding. Apple
 system-linked controls run the same value/address/call probes. Constants
 already folded by the assembler do not become interposable relocations.
+
+Shared-boundary tests also cover weak/strong alternate names with weak/strong
+non-alternate owners, the start and next public boundary, both input and nlist
+orders, code calls, zero-fill pointers, dependency retries, lifecycle ordering,
+provider leases and actual C++ exception cleanup. Private or strong preceding
+storage keeps its own relocations; replacing the next owner cannot drop a
+preceding missing dependency. Apple-linked executables independently check
+the same shared-boundary data and code probes. LLVM 22 LLD differs on local
+pointer rebinding and retains the tested preceding weak dependency at a shared
+next boundary; those LLD outcomes do not define this loader's selection policy.
 
 ## Forwarding aliases
 

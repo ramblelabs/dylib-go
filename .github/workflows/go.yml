@@ -15,7 +15,7 @@ jobs:
   native:
     name: Go native / ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.target == 'darwin-amd64' && 75 || 40 }}
+    timeout-minutes: ${{ matrix.target == 'darwin-amd64' && 90 || 40 }}
     strategy:
       fail-fast: false
       matrix:

@@ -174,6 +174,9 @@ original storage owner before independently overridden aliases lose their
 dependencies. This retains the cleanup frame of a surviving body even when
 another public name at its address selects a different definition. Personality
 pointers keep their public-name binding.
+The same pruning and cleanup rules apply when public alternate entries share
+their non-alternate owner's start or next public boundary. The preceding atom's
+frames and fixups retain their own selection identity.
 
 Raw Mach-O also accepts retained `__compact_unwind` records. Go validates their
 function ranges, native ownership, LSDA storage and saved-register encodings, then

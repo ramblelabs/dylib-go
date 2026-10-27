@@ -10,13 +10,17 @@ import (
 func TestMachOPublicAliasValidation(t *testing.T) {
 	for _, target := range []string{"x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		for _, kind := range []string{"regular", "coalesced"} {
-			for _, mode := range []string{"shared_boundary", "shared_start", "missing_owner"} {
+			for _, mode := range []string{"shared_boundary", "shared_start", "missing_owner", "private_boundary", "private_start"} {
 				t.Run(target+"/"+kind+"/"+mode, func(t *testing.T) {
 					source := ".section __DATA,__public," + kind + "\n.globl _public_a,_public_b\n.weak_definition _public_a,_public_b\n"
 					if mode == "shared_boundary" {
 						source += "_public_a:\n.quad _missing\n.globl _public_next\n_public_next:\n.alt_entry _public_b\n_public_b:\n.quad _other_missing\n"
 					} else if mode == "shared_start" {
 						source += "_public_a:\n.alt_entry _public_b\n_public_b:\n.quad _missing\n.quad _other_missing\n"
+					} else if mode == "private_boundary" {
+						source += "_public_a:\n.quad _missing\nlprivate_next:\n.alt_entry _public_b\n_public_b:\n.quad _other_missing\n"
+					} else if mode == "private_start" {
+						source += "lprivate:\n.alt_entry _public_a\n_public_a:\n.alt_entry _public_b\n_public_b:\n.quad _missing\n.quad _other_missing\n"
 					} else {
 						source += "lprivate:\n.quad _missing\n.alt_entry _public_a\n_public_a:\n.alt_entry _public_b\n_public_b:\n.quad _other_missing\n"
 					}
@@ -27,14 +31,41 @@ func TestMachOPublicAliasValidation(t *testing.T) {
 						t.Fatal(err)
 					}
 					f, err := parse("boundaries.o", b)
-					if kind == "coalesced" {
+					shared := mode == "shared_boundary" || mode == "shared_start"
+					if kind == "coalesced" && !shared {
 						if err == nil && len(f.info.Unsupported) == 0 {
 							t.Fatal("ambiguous explicit alias ownership accepted")
 						}
 						return
 					}
-					if err != nil || len(f.info.Unsupported) != 0 || len(f.obj.machoAtoms) != 0 {
-						t.Fatal("ordinary ambiguous storage not preserved", err, f)
+					wantAtoms := 0
+					if shared {
+						wantAtoms = 1
+						if mode == "shared_boundary" {
+							wantAtoms = 2
+						}
+					}
+					if err != nil || len(f.info.Unsupported) != 0 || len(f.obj.machoAtoms) != wantAtoms {
+						t.Fatal("public boundary classification", err, f)
+					}
+					if shared {
+						want := "public_a"
+						if mode == "shared_boundary" {
+							want = "public_next"
+						}
+						found := false
+						for _, s := range f.obj.symbols {
+							if s.name != "public_b" {
+								continue
+							}
+							found = true
+							if s.forward == nil || !s.forward.storage || s.forward.offset != 0 || f.obj.symbols[s.forward.target].name != want {
+								t.Fatal("shared alias has wrong public owner", s)
+							}
+						}
+						if !found {
+							t.Fatal("shared alias missing")
+						}
 					}
 					refs, err := references(f.obj)
 					if err != nil {
@@ -47,7 +78,7 @@ func TestMachOPublicAliasValidation(t *testing.T) {
 						}
 					}
 					if n != 2 {
-						t.Fatal("ambiguous storage lost fixups", refs)
+						t.Fatal("boundary normalization lost fixups", refs)
 					}
 				})
 			}
