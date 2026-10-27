@@ -33,7 +33,7 @@ const (
 	Indirect
 )
 
-// Component is a scalar at a compiler-confirmed offset in trivial Swift storage.
+// Component is a scalar at a compiler-confirmed offset in Swift storage.
 type Component struct {
 	Kind   Kind
 	Offset uint32
@@ -43,16 +43,17 @@ type Component struct {
 // Kind. Storage requires compiler-confirmed size, alignment, and components;
 // components must also have representable ordinary C aggregate offsets.
 // Indirect describes a formally indirect, trivial Swift value of explicit size
-// and alignment. Reference-bearing/nontrivial values need a native ownership
-// adapter and cannot be safely passed as bytes using this API.
+// and alignment. ValueType selects owned Swift storage instead of representation
+// bytes. Its metadata layout must match this compiler-confirmed passing shape.
 type Type struct {
 	Kind       Kind
 	Size       uint32
 	Alignment  uint32
 	Components []Component
+	ValueType  *ValueType
 }
 
-// Signature describes fixed, guaranteed parameters and a trivial result.
+// Signature describes fixed, guaranteed parameters and a result.
 // Inout/consumed parameters, generics, contexts, errors and async suspension
 // require a different native adapter. Void is valid only as the result.
 type Signature struct {
@@ -88,7 +89,7 @@ func normalize(t Type, result bool) (Type, error) {
 		t.Size, t.Alignment = size, alignment
 		return t, nil
 	}
-	if (t.Kind != Storage && t.Kind != Indirect) || t.Size == 0 || t.Size > maxStorage || t.Alignment == 0 || t.Alignment > 4096 || t.Alignment&(t.Alignment-1) != 0 {
+	if (t.Kind != Storage && t.Kind != Indirect) || t.Size == 0 && (t.Kind != Indirect || t.ValueType == nil) || t.Size > maxStorage || t.Alignment == 0 || t.Alignment > 4096 || t.Alignment&(t.Alignment-1) != 0 {
 		return Type{}, fmt.Errorf("abibridge: invalid Swift storage")
 	}
 	if t.Kind == Indirect {
@@ -117,7 +118,7 @@ func normalize(t Type, result bool) (Type, error) {
 }
 
 // Validate checks bounded storage descriptions; it cannot verify a function's
-// actual Swift ABI or whether its values have trivial ownership.
+// actual Swift ABI or its declared parameter ownership.
 func (s Signature) Validate() error {
 	_, _, err := s.encode()
 	return err
@@ -142,6 +143,9 @@ func (s Signature) encode() (Signature, []byte, error) {
 	words := []uint32{1, uint32(len(s.Args))}
 	total := uint64(s.Result.Size)
 	for _, t := range append([]Type{s.Result}, s.Args...) {
+		if t.ValueType != nil && (t.Kind == Void || uint64(t.Size) != t.ValueType.layout.Size || uint64(t.Alignment) != t.ValueType.layout.Alignment) {
+			return Signature{}, nil, fmt.Errorf("abibridge: Swift value metadata does not match its passing storage")
+		}
 		words = append(words, uint32(t.Kind), t.Size, t.Alignment, uint32(len(t.Components)))
 		for _, field := range t.Components {
 			words = append(words, uint32(field.Kind), field.Offset)
@@ -158,4 +162,16 @@ func (s Signature) encode() (Signature, []byte, error) {
 		binary.LittleEndian.PutUint32(data[4*i:], word)
 	}
 	return s, data, nil
+}
+
+func (s Signature) managed() bool {
+	if s.Result.ValueType != nil {
+		return true
+	}
+	for _, t := range s.Args {
+		if t.ValueType != nil {
+			return true
+		}
+	}
+	return false
 }

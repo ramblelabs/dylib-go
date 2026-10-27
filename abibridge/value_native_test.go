@@ -406,7 +406,7 @@ func testManagedValues(t *testing.T, facade, native string) {
 }
 
 func TestNativeSwiftFacadeVersions(t *testing.T) {
-	for _, version := range []int{0, 1, 2, 3} {
+	for _, version := range []int{0, 1, 2, 3, 4} {
 		t.Run(fmt.Sprint(version), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "facade.dylib")
 			run(t, "xcrun", "clang", "-dynamiclib", fmt.Sprintf("-DVERSION=%d", version), "testdata/facade_version.c", "-o", path)
@@ -422,6 +422,32 @@ func TestNativeSwiftFacadeVersions(t *testing.T) {
 			} else if err == nil {
 				r.Close()
 				t.Fatal("incompatible or incomplete facade accepted", version)
+			}
+		})
+	}
+	for _, version := range []int{2, 3} {
+		t.Run(fmt.Sprintf("%d_value_entries", version), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "facade.dylib")
+			run(t, "xcrun", "clang", "-dynamiclib", fmt.Sprintf("-DVERSION=%d", version), "-DCOMPLETE_VALUE_ENTRIES", "testdata/facade_version.c", "-o", path)
+			r, err := Open(path)
+			if version == 3 {
+				if err == nil {
+					r.Close()
+					t.Fatal("missing managed invocation entry accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			kind := &ValueType{owner: r, layout: ValueLayout{Size: 8, Stride: 8, Alignment: 8}}
+			if _, err := r.Prepare(Signature{Result: Type{Kind: Indirect, Size: 8, Alignment: 8, ValueType: kind}}); !errors.Is(err, ErrManagedUnsupported) {
+				t.Fatal(err)
+			}
+			call := &Call{owner: r, plan: 1}
+			if _, err := call.InvokeManaged(nil); !errors.Is(err, ErrManagedUnsupported) {
+				t.Fatal(err)
 			}
 		})
 	}

@@ -1,6 +1,11 @@
-private struct Record {
-    let text: String
-    let number: Int64
+@frozen public struct Record {
+    public let text: String
+    public let number: Int64
+}
+
+@_silgen_name("fixture_value_example_transform")
+public func transform(_ value: Record) -> Record {
+    Record(text: value.text + "more", number: value.number + 8)
 }
 
 @_cdecl("fixture_value_example_metadata")

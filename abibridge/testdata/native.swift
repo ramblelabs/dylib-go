@@ -119,12 +119,58 @@ public func layout(_ which: Int32, _ index: Int32) -> Int32 {
 }
 
 private final class ManagedToken { deinit { fixture_value_record() } }
-private struct ManagedRecord {
-    let token: ManagedToken
+public struct ManagedRecord {
+    fileprivate let token: ManagedToken
     let text: String
     let number: Int64
 }
-private struct EmptyValue {}
+
+@frozen public struct DirectManaged {
+    public let object: AnyObject
+    public let text: String
+    public let number: Int64
+}
+@_cdecl("fixture_direct_metadata")
+public func directMetadata() -> UnsafeRawPointer { unsafeBitCast(DirectManaged.self, to: UnsafeRawPointer.self) }
+@_silgen_name("fixture_owned_direct_make")
+public func ownedDirectMake(_ number: Int64) -> DirectManaged {
+    DirectManaged(object: ManagedToken(), text: String(repeating: "native", count: 100), number: number)
+}
+@_silgen_name("fixture_owned_direct_read")
+public func ownedDirectRead(_ value: DirectManaged) -> Int64 { value.number + Int64(value.text.count) }
+@_silgen_name("fixture_owned_direct_echo")
+public func ownedDirectEcho(_ value: DirectManaged, _ delta: Int64) -> DirectManaged {
+    DirectManaged(object: value.object, text: value.text + "copy", number: value.number + delta)
+}
+@_silgen_name("fixture_owned_direct_pair")
+public func ownedDirectPair(_ first: DirectManaged, _ second: DirectManaged, _ delta: Int64) -> DirectManaged {
+    DirectManaged(object: first.object, text: first.text + second.text, number: first.number + second.number + delta)
+}
+@_silgen_name("fixture_owned_direct_wait")
+public func ownedDirectWait(_ value: DirectManaged) -> DirectManaged { _ = fixture_wait(); return value }
+@_silgen_name("fixture_owned_indirect_make")
+public func ownedIndirectMake(_ number: Int64) -> ManagedRecord {
+    ManagedRecord(token: ManagedToken(), text: String(repeating: "native", count: 100), number: number)
+}
+@_silgen_name("fixture_owned_indirect_read")
+public func ownedIndirectRead(_ value: ManagedRecord) -> Int64 { value.number + Int64(value.text.count) }
+@_silgen_name("fixture_owned_indirect_echo")
+public func ownedIndirectEcho(_ value: ManagedRecord, _ delta: Int64) -> ManagedRecord {
+    ManagedRecord(token: value.token, text: value.text + "copy", number: value.number + delta)
+}
+@_silgen_name("fixture_owned_indirect_pair")
+public func ownedIndirectPair(_ first: ManagedRecord, _ second: ManagedRecord, _ delta: Int64) -> ManagedRecord {
+    ManagedRecord(token: first.token, text: first.text + second.text, number: first.number + second.number + delta)
+}
+@_silgen_name("fixture_owned_indirect_wait")
+public func ownedIndirectWait(_ value: ManagedRecord) -> ManagedRecord { _ = fixture_wait(); return value }
+public struct EmptyValue {}
+@_silgen_name("fixture_owned_empty_make")
+public func ownedEmptyMake() -> EmptyValue { EmptyValue() }
+@_silgen_name("fixture_owned_empty_echo")
+public func ownedEmptyEcho(_ value: EmptyValue) -> EmptyValue { value }
+@_silgen_name("fixture_owned_empty_read")
+public func ownedEmptyRead(_ value: EmptyValue) -> Int32 { 42 }
 @_cdecl("fixture_managed_metadata")
 public func managedMetadata() -> UnsafeRawPointer { unsafeBitCast(ManagedRecord.self, to: UnsafeRawPointer.self) }
 @_cdecl("fixture_gated_metadata")
@@ -155,3 +201,53 @@ public func valueLayout(_ which: Int32, _ index: Int32) -> Int32 {
         : (MemoryLayout<EmptyValue>.size, MemoryLayout<EmptyValue>.stride, MemoryLayout<EmptyValue>.alignment)
     switch index { case 0: return Int32(layout.0); case 1: return Int32(layout.1); case 2: return Int32(layout.2); default: return -1 }
 }
+
+@frozen public struct MixedManaged {
+    public let object: AnyObject
+    public let text: String
+    public let number: Double
+}
+@_cdecl("fixture_mixed_metadata")
+public func mixedMetadata() -> UnsafeRawPointer { unsafeBitCast(MixedManaged.self, to: UnsafeRawPointer.self) }
+@_silgen_name("fixture_owned_mixed_make")
+public func ownedMixedManagedMake(_ number: Int64) -> MixedManaged {
+    MixedManaged(object: ManagedToken(), text: String(repeating: "native", count: 100), number: Double(number))
+}
+@_silgen_name("fixture_owned_mixed_read")
+public func ownedMixedManagedRead(_ value: MixedManaged) -> Int64 { Int64(value.number) + Int64(value.text.count) }
+@_silgen_name("fixture_owned_mixed_echo")
+public func ownedMixedManagedEcho(_ value: MixedManaged, _ delta: Int64) -> MixedManaged {
+    MixedManaged(object: value.object, text: value.text + "copy", number: value.number + Double(delta))
+}
+@_silgen_name("fixture_owned_mixed_pair")
+public func ownedMixedManagedPair(_ first: MixedManaged, _ second: MixedManaged, _ delta: Int64) -> MixedManaged {
+    MixedManaged(object: first.object, text: first.text + second.text, number: first.number + second.number + Double(delta))
+}
+@_silgen_name("fixture_owned_mixed_wait")
+public func ownedMixedManagedWait(_ value: MixedManaged) -> MixedManaged { _ = fixture_wait(); return value }
+
+@frozen public struct LargeManaged {
+    public let object: AnyObject
+    public let text: String
+    public let number: Int64
+    public let integer: UInt64
+    public let floating: Double
+}
+@_cdecl("fixture_large_metadata")
+public func largeMetadata() -> UnsafeRawPointer { unsafeBitCast(LargeManaged.self, to: UnsafeRawPointer.self) }
+@_silgen_name("fixture_owned_large_make")
+public func ownedLargeManagedMake(_ number: Int64) -> LargeManaged {
+    LargeManaged(object: ManagedToken(), text: String(repeating: "native", count: 100), number: number, integer: 7, floating: 3)
+}
+@_silgen_name("fixture_owned_large_read")
+public func ownedLargeManagedRead(_ value: LargeManaged) -> Int64 { value.number + Int64(value.text.count) + Int64(value.integer) - 7 + Int64(value.floating) - 3 }
+@_silgen_name("fixture_owned_large_echo")
+public func ownedLargeManagedEcho(_ value: LargeManaged, _ delta: Int64) -> LargeManaged {
+    LargeManaged(object: value.object, text: value.text + "copy", number: value.number + delta, integer: value.integer, floating: value.floating)
+}
+@_silgen_name("fixture_owned_large_pair")
+public func ownedLargeManagedPair(_ first: LargeManaged, _ second: LargeManaged, _ delta: Int64) -> LargeManaged {
+    LargeManaged(object: first.object, text: first.text + second.text, number: first.number + second.number + delta, integer: first.integer, floating: first.floating)
+}
+@_silgen_name("fixture_owned_large_wait")
+public func ownedLargeManagedWait(_ value: LargeManaged) -> LargeManaged { _ = fixture_wait(); return value }

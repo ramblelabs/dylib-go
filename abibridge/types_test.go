@@ -73,6 +73,9 @@ func TestSwiftClosedAndUnavailable(t *testing.T) {
 	if _, err := c.Invoke(nil); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
+	if _, err := c.InvokeManaged(nil); !errors.Is(err, ErrClosed) {
+		t.Fatal(err)
+	}
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -121,5 +124,30 @@ func TestSwiftClosedAndUnavailable(t *testing.T) {
 	}
 	if _, err := builder.Build(context.Background(), builder.Options{}); err == nil {
 		t.Fatal("missing sources accepted")
+	}
+}
+
+func TestSwiftManagedStorageDescriptions(t *testing.T) {
+	kind := &ValueType{layout: ValueLayout{Size: 16, Stride: 16, Alignment: 8}}
+	shape := Type{Kind: Storage, Size: 16, Alignment: 8, Components: []Component{{Uint64, 0}, {Uint64, 8}}, ValueType: kind}
+	if err := (Signature{Result: shape, Args: []Type{shape}}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, description := range []Type{
+		{Kind: Storage, Size: 8, Alignment: 8, Components: []Component{{Uint64, 0}}, ValueType: kind},
+		{Kind: Indirect, Size: 16, Alignment: 4, ValueType: kind},
+		{Kind: Pointer, ValueType: kind},
+		{Kind: Void, ValueType: &ValueType{layout: ValueLayout{Alignment: 1}}},
+	} {
+		if err := (Signature{Result: description}).Validate(); err == nil {
+			t.Fatal("managed metadata mismatch accepted")
+		}
+	}
+	empty := &ValueType{layout: ValueLayout{Stride: 1, Alignment: 1}}
+	if err := (Signature{Result: Type{Kind: Indirect, Alignment: 1, ValueType: empty}}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (Signature{Result: Type{Kind: Indirect, Alignment: 1}}).Validate(); err == nil {
+		t.Fatal("empty trivial storage accepted")
 	}
 }

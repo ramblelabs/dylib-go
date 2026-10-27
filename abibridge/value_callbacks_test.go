@@ -31,8 +31,9 @@ func managedCallback(t *testing.T, facade, native string, retire bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	initializer := prepare(t, r, Signature{Args: []Type{{Kind: Pointer}, {Kind: Int64}}})
-	initialize := resolve(t, s, "fixture_managed_initialize")
+	layout := kind.Layout()
+	makeCall := prepare(t, r, Signature{Result: Type{Kind: Indirect, Size: uint32(layout.Size), Alignment: uint32(layout.Alignment), ValueType: kind}, Args: []Type{{Kind: Int64}}})
+	makeSymbol := resolve(t, s, "fixture_owned_indirect_make")
 	other := prepare(t, r, Signature{Result: Type{Kind: Int32}})
 	emptyType, err := r.PrepareValueType(resolve(t, s, "fixture_empty_metadata"))
 	if err != nil {
@@ -86,13 +87,11 @@ func managedCallback(t *testing.T, facade, native string, retire bool) {
 		t.Fatal(err)
 	}
 	defer observer(0, 0)
-	value, err := kind.New(func(address uintptr) error {
-		_, err := initializer.Invoke(initialize, words(uint64(address)), words(42))
-		return err
-	})
+	result, err := makeCall.InvokeManaged(makeSymbol, Argument{Bytes: words(42)})
 	if err != nil {
 		t.Fatal(err)
 	}
+	value := result.Value
 	copy, err := value.Clone()
 	if err != nil {
 		t.Fatal(err)
