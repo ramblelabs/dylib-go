@@ -83,14 +83,7 @@ jobs:
         # Run the compiler qualification matrix once, in the libffi suite below.
         # Keep its backend-unavailable cases here as well as all direct callers.
         run: |
-          go list -tags llgo ./... > "$RUNNER_TEMP/dylib-llgo-packages"
-          packages=()
-          while IFS= read -r package; do
-            if [[ "$package" != github.com/ramblelabs/dylib-go/compiler/clang ]]; then
-              packages+=("$package")
-            fi
-          done < "$RUNNER_TEMP/dylib-llgo-packages"
-          llgo test -count=1 -timeout="$LLGO_TEST_TIMEOUT" -v "${packages[@]}"
+          bash scripts/test-packages.sh llgo llgo "$LLGO_TEST_TIMEOUT"
           llgo test -count=1 -timeout="$LLGO_TEST_TIMEOUT" -v \
             -run '^(TestRecordsAcrossTargets|TestCallbackRecordFieldsAcrossTargets|TestRecordMetadataValidationAndBudgets)$' ./compiler/clang
       - name: Execute optional scalar, struct and callback libffi ABI

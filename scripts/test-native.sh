@@ -14,14 +14,7 @@ esac
 directory=$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/dylib-compiler.XXXXXX")
 trap 'rm -rf "$directory"' EXIT
 
-go list "$@" -tags "$tags" ./... > "$directory/packages"
-packages=()
-while IFS= read -r package; do
-  if [[ "$package" != github.com/ramblelabs/dylib-go/compiler/clang ]]; then
-    packages+=("$package")
-  fi
-done < "$directory/packages"
-"$tool" test -count=1 -timeout="$timeout" -v -tags libffi "$@" "${packages[@]}"
+bash scripts/test-packages.sh "$tool" "$tags" "$timeout" "$@"
 
 # Compile once and enumerate the binary's real tests so new tests are included.
 binary="$directory/clang.test"
