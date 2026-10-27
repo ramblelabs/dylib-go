@@ -55,7 +55,7 @@ A member can also contain ordinary sections alongside the verified import templa
 
 The mixed-member path reuses the import-only validator before removing any template sections. Ordinary COMDAT sections are retained with their original selection rules, section indices and associative parents, including zero-size sections. Associations may cover ordinary initialization/finalization arrays; discarding their parent also discards those entries and their references. COMDAT groups and their parents must stay entirely outside the removed import template.
 
-Grouped import thunks/tables, extra code sharing the thunk's `.text`, cross-DLL slot association, multiple disjoint IAT blocks, arbitrary descriptor/code combinations, and nonstandard `.idata` sections remain unsupported. Descriptor and DLL-name helpers must remain metadata-only. Unrelated unsupported features such as TLS retain their diagnostics. An unused mixed archive member does not load its DLL; selecting one preserves its ordinary initialization and finalization under the normal session lifetime rules.
+GNU force-reference templates still require one DLL. Extra code sharing the thunk's `.text`, arbitrary descriptor/code combinations, repeated IAT sections and nonstandard `.idata` sections remain unsupported. The separate self-contained directory form below supports explicit cross-DLL association. Descriptor and DLL-name helpers must remain metadata-only. Unrelated unsupported features such as TLS retain their diagnostics. An unused mixed archive member does not load its DLL; selecting one preserves its ordinary initialization and finalization under the normal session lifetime rules.
 
 `Info.Imports`, `LibraryPaths`, DLL ownership, and failure/retry behavior are shared with short imports. MinGW consumers using explicit `__declspec(dllimport)` function/data declarations execute on Windows AMD64/ARM64/386; calling conventions still require an appropriate caller adapter. Compiler-driven data auto-import/pseudo-relocations are not implemented.
 
@@ -68,6 +68,49 @@ COMDAT mixed-member tests additionally verify selections 1–7, association and 
 Multi-entry tests inspect pure, mixed and COMDAT members on all three architectures, including data-first/ordinal-only tables, const aliases, optional ILTs, shared descriptors and malformed later entries without partial conversion. Native Windows tests call named/ordinal functions and imported data from one member through pure and mixed archives at `-O0`/`-O2`; mixed cases retain dependency extraction, retry, associative lifecycle selection and lazy missing-DLL behavior.
 
 ARM64EC hybrid imports, delay-load tables, and linker directives for automatic default-library selection remain outside the current implementation.
+
+## Self-contained import directories
+
+A raw object can instead contain a complete bounded `IMAGE_IMPORT_DESCRIPTOR`
+array in `.idata$2`. Each descriptor explicitly identifies a DLL name and its
+terminated `.idata$4` lookup / `.idata$5` address subtable. Multiple descriptors
+may identify different DLLs exporting identical names. RVA references determine
+that association; the decoder does not infer it from table or symbol order.
+The directory ends with a null descriptor, and each nonempty subtable ends with
+a null pointer. Pointer-aligned zero padding between subtables is allowed.
+
+The Go decoder validates matching IAT/ILT bytes and name references, nonoverlap,
+16-bit nonzero ordinals, complete relative-address fields and bounded native
+names. Each imported row needs one public `__imp_` identity. Named rows refer
+to hint/name entries in `.idata$6`; DLL names reside in `.idata$6` or `.idata$7`.
+An optional `.text` contains only the existing exact tail-jump templates, matched
+to their own IAT rows. Additional callable names and const/data aliases keep
+the existing import symbol semantics. There are at most 65,536 descriptors and
+65,536 imported rows, with the usual input-file/name budget.
+
+The resulting imports use the same DLL lookup, owned IAT slots, lifetime and
+retry rules as short/GNU imports. Native table storage and adjacency are not
+exposed. The same overlay preserves original symbol/section indices, ordinary
+code/data/BSS, dependencies, COMDAT associations and lifecycle entries. Live
+references into removed private helpers are rejected. Unknown fixups, executable
+metadata and groups touching import metadata prevent conversion. Other
+unsupported features keep their original diagnostics.
+
+This form requires one section per supported table name and self-contained
+metadata references. Public descriptor/name helpers, missing ILTs, separate null
+descriptor sections, bound imports, delay imports, repeated IAT sections,
+auto-import/pseudo-relocations and arbitrary inline code remain unqualified.
+Complete DLLs continue to use the OS loader for those native table layouts.
+
+Compiler-produced AMD64/ARM64/i386 objects and rejection cases run on all
+native CI hosts. Optional cross-target LLD controls link the original inputs
+into complete PE DLLs and inspect their imports with Go's `debug/pe`. Windows
+Go/llgo tests additionally execute those DLLs through the OS loader, alongside
+raw-object/archive calls. Distinct providers exporting identical names verify
+DLL-specific function/data/ordinal selection. Mixed tests cover ordinary and
+COMDAT code, retained/discarded initialization/finalization, missing-dependency
+retry, staged snapshots and an unused missing-DLL archive member. Go qualifies
+i386; native llgo qualifies AMD64/ARM64.
 
 ## Weak externals
 

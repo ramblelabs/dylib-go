@@ -58,6 +58,12 @@ func (g coffImportGraph) convertMixed(o *object) (*object, bool) {
 	if !ok {
 		return nil, false
 	}
+	return overlayCOFFImports(o, template, converted)
+}
+
+// Preserve original section/symbol indices and ordinary COMDAT/lifecycle data.
+// Incoming references may use public import identities, never removed helpers.
+func overlayCOFFImports(o *object, template map[int]bool, converted *object) (*object, bool) {
 	imports := make(map[string]symbol)
 	for _, s := range converted.symbols {
 		imports[s.name] = s
