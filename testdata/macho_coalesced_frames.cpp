@@ -58,6 +58,8 @@ __asm__(".globl _coal_frame_a_drop, _coal_frame_a_tail, _coal_frame_zkeep\n"
         "_coal_frame_a_drop = _coal_frame_drop\n"
         "_coal_frame_a_tail = _coal_frame_tail\n"
 #ifdef DYLIB_FRAME_SHARED_ALIASES
+        ".globl _coal_frame_keep\n"
+        ".weak_definition _coal_frame_keep\n"
         "_coal_frame_keep = _coal_frame_zkeep\n"
 #else
         "_coal_frame_zkeep = _coal_frame_keep\n"
