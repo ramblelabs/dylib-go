@@ -177,6 +177,10 @@ pointers keep their public-name binding.
 The same pruning and cleanup rules apply when public alternate entries share
 their non-alternate owner's start or next public boundary. The preceding atom's
 frames and fixups retain their own selection identity.
+Replacing a zero-byte public terminal definition does not remove a code range
+and leaves the preceding function's DWARF/compact records intact. Native tests
+retain integer/double catch and RAII cleanup through object/archive selection
+and code-lease retirement after such a replacement.
 
 Raw Mach-O also accepts retained `__compact_unwind` records. Go validates their
 function ranges, native ownership, LSDA storage and saved-register encodings, then

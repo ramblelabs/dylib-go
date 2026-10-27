@@ -137,7 +137,7 @@ func machoFrameRecords(s *section) ([]machoFrameRecord, error) {
 func (o *object) pruneMachOUnwind(losing []machoCoalescedAtom) error {
 	code := false
 	for _, atom := range losing {
-		code = code || o.sections[atom.section].exec
+		code = code || atom.start < atom.end && o.sections[atom.section].exec
 	}
 	metadata := false
 	for _, s := range o.sections {
