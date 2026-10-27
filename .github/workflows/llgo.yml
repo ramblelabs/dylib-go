@@ -78,7 +78,9 @@ jobs:
         if: matrix.target == 'windows-arm64'
         # setup-llgo uses setup-go and provides the native ARM64 C toolchain.
         # Build a separate gc test executable, including Go/llgo DLL producers.
-        run: go test -count=1 -timeout=20m -v -tags libffi ./...
+        run: |
+          go test -count=1 -v ./abi
+          go test -count=1 -timeout=20m -v -tags libffi ./...
       - name: Execute direct llgo function-pointer path
         # Run the compiler qualification matrix once, in the libffi suite below.
         # Keep its backend-unavailable cases here as well as all direct callers.

@@ -1,4 +1,4 @@
-//go:build libffi && cgo
+//go:build cgo
 
 package abi
 
@@ -12,7 +12,7 @@ import (
 )
 
 func TestNativeValueRoundTrips(t *testing.T) {
-	for _, value := range []Value{Int8(-128), Uint8(255), Int16(-32768), Uint16(65535), Int32(-2147483648), Uint32(^uint32(0)), Int64(-9223372036854775808), Uint64(^uint64(0)), Float32(20.5), Float64(22.5), Boolean(true), Ptr(0)} {
+	for _, value := range []Value{Int8(-128), Uint8(255), Int16(-32768), Uint16(65535), Int32(-2147483648), Uint32(^uint32(0)), Int64(-9223372036854775808), Uint64(^uint64(0)), Float32(20.5), Float64(22.5), Boolean(true), Boolean(false), Value{Type: F32, Bits: 0x80000000}, Value{Type: F32, Bits: 0x7fc00042}, Value{Type: F64, Bits: 0x8000000000000000}, Value{Type: F64, Bits: 0x7ff8000000000042}, Ptr(0)} {
 		owner, err := NewNativeValue(value.Description(), value)
 		if err != nil {
 			t.Fatal(err)
@@ -225,5 +225,35 @@ func TestNativeValueAddressCleanup(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("panic left a native value lease active")
+	}
+}
+
+func TestNativeStorageBoundary(t *testing.T) {
+	description := TypeDesc{Type: Array, Len: 65536, Elem: &TypeDesc{Type: U8}}
+	initial := Zero(description)
+	initial.Aggregate.Fields[0] = Uint8(20)
+	initial.Aggregate.Fields[65535] = Uint8(22)
+	owner, err := NewNativeValue(description, initial)
+	if err != nil {
+		t.Fatal("64 KiB boundary", err)
+	}
+	defer owner.Close()
+	layout, err := owner.Layout()
+	if err != nil || layout.Size != 65536 || layout.Alignment != 1 || layout.Offsets[65535] != 65535 {
+		t.Fatal("64 KiB layout", layout.Size, err)
+	}
+	got, err := owner.Read()
+	if err != nil || !reflect.DeepEqual(got, initial) {
+		t.Fatal("64 KiB roundtrip", err)
+	}
+	// A small field after a 64 KiB array also exceeds the storage limit.
+	full := TypeDesc{Type: Array, Len: 32768, Elem: &TypeDesc{Type: U16}}
+	oversized := TypeDesc{Type: Struct, Fields: []Field{{Type: full}, {Type: TypeDesc{Type: U8}}}}
+	if _, err := LayoutOf(oversized, CDecl); err == nil {
+		t.Fatal("accepted 64 KiB plus one byte")
+	}
+	large := TypeDesc{Type: Array, Len: 10000, Elem: &TypeDesc{Type: U64}}
+	if _, err := LayoutOf(TypeDesc{Type: Pointer, Elem: &large}, CDecl); err != nil {
+		t.Fatal("pointer unnecessarily laid out its annotated pointee", err)
 	}
 }

@@ -264,7 +264,9 @@ Use `abi.NewNativeValue(description, initial)` when C must retain scalar, record
 or array storage across calls. Acquire a lease, pass its address with `abi.Ptr`,
 unregister/join native users, then release the lease and close the owner. Reads
 and writes use logical values; pointer fields remain caller-owned addresses.
-This optional libffi path owns storage separately from code images. See
+Storage requires cgo with Go or llgo and does not require the libffi tag;
+`abi.StorageAvailable()` reports availability. It owns storage separately from
+code images. See
 [native value ownership](docs/native-values.md) and the
 [tested library example](examples/nativevalue/main.go).
 
@@ -277,7 +279,7 @@ users while all leases remain alive; failed cleanup retains them for a later
 [tested C registration example](examples/registration/main.go), executed by
 `examples/run.sh go library` and `examples/run.sh llgo library`.
 
-`abi.LayoutOf(description, abi.CDecl)` returns the current native backend's storage size, alignment and direct member offsets as independent Go data. It uses the same type construction as calls and callbacks; pointer queries describe the address itself. Compare these values with the producer's compiler layout before using generated records. See [native layout queries](docs/layout.md).
+`abi.LayoutOf(description, abi.CDecl)` returns the current native backend's storage size, alignment and direct member offsets as independent Go data. Default/CDecl queries require cgo without the libffi tag; other conventions use the optional libffi backend. Pointer queries describe the address itself. Compare these values with the producer's compiler layout before using generated records. See [native layout queries](docs/layout.md).
 
 For a variadic call shape, set `Signature.Variadic = true` and `FixedArgs` to the fixed-prefix count. `Args` includes every concrete tail argument. The backend promotes tail `float32` to `float64` and small integers / C bool to `int32`; fixed arguments retain their declared types. Prepare another binding for a different tail shape. `Convention` accepts `abi.Default` / `abi.CDecl` on supported hosts and `abi.StdCall` / `abi.FastCall` / `abi.ThisCall` for fixed calls on Windows 386; unsupported host/convention combinations fail during preparation.
 

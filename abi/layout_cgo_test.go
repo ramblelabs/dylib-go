@@ -1,4 +1,4 @@
-//go:build libffi && cgo
+//go:build cgo
 
 package abi
 
@@ -32,7 +32,7 @@ func TestLayoutOwnershipConventionsAndLimits(t *testing.T) {
 	wg.Wait()
 	for _, convention := range []Convention{StdCall, FastCall, ThisCall} {
 		got, err := LayoutOf(desc, convention)
-		if runtime.GOOS == "windows" && runtime.GOARCH == "386" {
+		if Available() && runtime.GOOS == "windows" && runtime.GOARCH == "386" {
 			if err != nil || !reflect.DeepEqual(got, want) {
 				t.Fatalf("Windows 386 convention %d: %+v, %v", convention, got, err)
 			}

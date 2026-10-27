@@ -1,7 +1,7 @@
 // Package abi describes C ABI signatures independently of object-file
-// formats. Dynamic calls, C callbacks, layout queries and owned storage are optional:
-// build with -tags libffi. For statically known signatures llgo can call a typed
-// C function pointer directly.
+// formats. Host C layout queries and owned storage require cgo. Dynamic calls
+// and C callbacks additionally require -tags libffi. For statically known
+// signatures llgo can call a typed C function pointer directly.
 package abi
 
 import (
@@ -141,7 +141,7 @@ func Boolean(v bool) Value {
 	return Value{Type: Bool}
 }
 
-var ErrUnavailable = errors.New("dynamic C ABI calls and callbacks require cgo and -tags libffi (plus libffi development files)")
+var ErrUnavailable = errors.New("native ABI operation unavailable: C storage requires cgo; dynamic calls and callbacks also require -tags libffi")
 
 // Call invokes a native function with a caller-supplied exact signature. It
 // neither infers types from names nor adapts between operating-system ABIs.

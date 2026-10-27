@@ -1,9 +1,11 @@
 # Native storage layouts
 
-`abi.LayoutOf(description, convention)` queries the actual native backend used by
-dynamic calls and C callbacks. Build with cgo and `-tags libffi`; a valid query in
-a build without that backend returns `abi.ErrUnavailable`. Invalid descriptors,
-void and invalid conventions fail before backend preparation.
+`abi.LayoutOf(description, convention)` queries host C storage. Default/CDecl
+queries require cgo, with Go or llgo; `-tags libffi` is optional.
+`abi.StorageAvailable()` reports this storage capability independently of
+`abi.Available()`, which reports dynamic calls. Without cgo, valid queries return
+`abi.ErrUnavailable`. Invalid descriptors, void and invalid conventions fail
+before backend preparation.
 
 | Result | Meaning |
 | --- | --- |
@@ -14,9 +16,8 @@ void and invalid conventions fail before backend preparation.
 Offsets are absent for scalars and pointers. For nested records, query each
 member's descriptor separately. A matrix's direct offsets describe rows; querying
 the row descriptor gives column offsets. The returned slice belongs to the caller;
-changing it cannot modify another query, prepared call or callback. Temporary
-native type descriptions are released before the function returns, so no `Close`
-operation is needed.
+changing it cannot modify another query, prepared call or callback. No native
+allocation is retained after a query, so no `Close` operation is needed.
 
 Pointer queries describe the native address itself. An annotated pointee is
 validated logically but is not laid out or allocated by that query. Arrays can be
@@ -25,9 +26,9 @@ or return a bare array by value. Descriptor nesting/element limits and the
 backend's 64 KiB aggregate storage limit remain unchanged.
 
 `abi.Default` and `abi.CDecl` use the host's default C ABI. `abi.StdCall` and
-`abi.FastCall` are available on Windows 386; other host/convention combinations
-fail through the existing backend convention selection. The query does not
-select a foreign operating system, CPU or compiler ABI.
+`abi.FastCall` require the libffi backend on Windows 386; other explicit
+conventions also require libffi and its host-specific convention support. The
+query does not select a foreign operating system, CPU or compiler ABI.
 
 Use these values to compare a compiler's `sizeof`, `_Alignof` and `offsetof`
 results before preparing a generated record binding. Ordinary field descriptions
@@ -44,6 +45,11 @@ Existing Go/llgo native suites execute these tests, including Go Linux/Windows
 unavailable builds, validation, concurrent independent queries, convention
 selection, oversized aggregates and pointer queries with oversized pointees.
 
-The implementation uses libffi's existing aggregate layout calculation and
-initializes primitive metadata before reading it, following its
-[size and alignment contract](https://github.com/libffi/libffi/blob/v3.4.6/doc/libffi.texi#L406-L463).
+Without libffi, the implementation queries scalar `sizeof`/`_Alignof` from the
+host C compiler and computes ordinary struct/array offsets and padding in Go.
+It deliberately avoids Go struct alignment, which differs on some 32-bit hosts.
+With libffi enabled, layout queries retain its native ABI-specific calculation;
+owned storage always uses the C scalar probes and Go layout calculation. Tests
+compare both results and independently dereference/mutate the allocation in C,
+including nested padding. The retained-record library example is built without
+`-tags libffi` on every native CI target.

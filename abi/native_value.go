@@ -34,7 +34,7 @@ type NativeValue struct {
 
 // NewNativeValue snapshots the descriptor and copies initial into owned native
 // storage, using the same host C layout as LayoutOf(description, CDecl). It
-// requires cgo and -tags libffi; the 64 KiB storage limit applies. Pointer values
+// requires cgo; the 64 KiB storage limit applies. Pointer values
 // must be caller-owned native addresses, not AddressOf temporary pointees.
 // Close explicitly; no finalizer releases storage retained by native code.
 func NewNativeValue(description TypeDesc, initial Value) (*NativeValue, error) {
