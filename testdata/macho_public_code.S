@@ -7,6 +7,9 @@
 .weak_definition _public_fn_a, _public_fn_b
 _public_fn_a:
 #if DYLIB_PUBLIC_FORM == 0
+#ifdef DYLIB_PUBLIC_SHARED
+.alt_entry _public_fn_b
+#endif
 _public_fn_b:
 .alt_entry lpublic_entry
 lpublic_entry:

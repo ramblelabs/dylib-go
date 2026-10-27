@@ -52,6 +52,7 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 			return fmt.Errorf("%s original address is too large", input.Name)
 		}
 		byOffset := make(map[uint64][]int)
+		publicBoundaries := make(map[uint64]bool)
 		starts := []uint64{0, input.Size}
 		var publicAlternates []int
 		if f.Symtab == nil {
@@ -75,6 +76,9 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 				return fmt.Errorf("%s needs subsections_via_symbols for multiple boundaries", input.Name)
 			}
 			byOffset[s.value] = append(byOffset[s.value], i)
+			if s.global && s.name != "" && (!s.weak || f.Symtab.Syms[i].Desc&0x80 != 0) {
+				publicBoundaries[s.value] = true
+			}
 			starts = append(starts, s.value)
 		}
 		sort.Slice(starts, func(i, j int) bool { return starts[i] < starts[j] })
@@ -94,8 +98,8 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 					continue
 				}
 				public = append(public, index)
-				// Apple ld gives storage to the last weak name in name order;
-				// a strong name keeps the storage when a weak alias is replaced.
+				// Among non-alternate names, Apple ld gives storage to the
+				// last weak name; a strong name keeps its storage.
 				choose := key < 0 || o.symbols[key].weak && !s.weak
 				if key >= 0 && o.symbols[key].weak == s.weak {
 					previous, err := machoRawSymbolName(f, data, key)
@@ -120,7 +124,13 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 					break
 				}
 				if value != input.Size && len(byOffset[value]) != 0 {
-					ambiguous = true
+					// An alternate at a public boundary belongs to the owner
+					// starting there, including offset zero. Private boundaries
+					// do not establish that ownership, so keep their old policy.
+					ambiguous = ambiguous || !publicBoundaries[value]
+					if value == end {
+						continue
+					}
 				}
 				if value < end || value == input.Size {
 					public = append(public, index)

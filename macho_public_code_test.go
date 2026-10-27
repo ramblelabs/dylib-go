@@ -21,6 +21,14 @@ func machoPublicCodeProviders(t *testing.T, target string) []string {
 }
 
 func TestNativeMachOPublicAliasCode(t *testing.T) {
+	testNativeMachOPublicCode(t, false)
+}
+
+func TestNativeMachOSharedPublicCode(t *testing.T) {
+	testNativeMachOPublicCode(t, true)
+}
+
+func testNativeMachOPublicCode(t *testing.T, shared bool) {
 	target := needMachOCoalescedNative(t)
 	sdk := machoCoalescedSDK(t)
 	for _, opt := range []string{"-O0", "-O2"} {
@@ -29,8 +37,14 @@ func TestNativeMachOPublicAliasCode(t *testing.T) {
 			for _, kind := range []string{"regular", "coalesced"} {
 				t.Run(kind, func(t *testing.T) {
 					for form := 0; form < 2; form++ {
+						if shared && form != 0 {
+							continue
+						}
 						t.Run(fmt.Sprintf("form%d", form), func(t *testing.T) {
 							flags := machoPublicFlags(kind, form, opt)
+							if shared {
+								flags = append(flags, "-DDYLIB_PUBLIC_SHARED")
+							}
 							weak, _ := machoCoalescedFixture(t, target, "macho_public_code.S", flags...)
 							probe, _ := machoCoalescedFixture(t, target, "macho_public_code.c", flags...)
 							archive := machoCoalescedArchive(t, weak)

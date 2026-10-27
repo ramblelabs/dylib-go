@@ -30,7 +30,12 @@ extern "C" COAL_FRAME int coal_frame_drop(int a, int b) {
     try { return coal_frame_missing(a, b); }
     catch (DeadFrameType &) { return -1; }
 }
-extern "C" COAL_FRAME int coal_frame_keep(int a, int b) {
+#ifdef DYLIB_FRAME_SHARED_ALIASES
+#define COAL_KEEP coal_frame_zkeep
+#else
+#define COAL_KEEP coal_frame_keep
+#endif
+extern "C" COAL_FRAME int COAL_KEEP(int a, int b) {
     DYLIB_CXX_DWARF();
 #ifdef DYLIB_FRAME_PUBLIC_ALIASES
     cxx_save(reinterpret_cast<char *>(&coal_frame_zkeep) + 4);
@@ -52,7 +57,19 @@ __asm__(".globl _coal_frame_a_drop, _coal_frame_a_tail, _coal_frame_zkeep\n"
         ".weak_definition _coal_frame_a_drop, _coal_frame_a_tail, _coal_frame_zkeep\n"
         "_coal_frame_a_drop = _coal_frame_drop\n"
         "_coal_frame_a_tail = _coal_frame_tail\n"
-        "_coal_frame_zkeep = _coal_frame_keep\n");
+#ifdef DYLIB_FRAME_SHARED_ALIASES
+        "_coal_frame_keep = _coal_frame_zkeep\n"
+#else
+        "_coal_frame_zkeep = _coal_frame_keep\n"
+#endif
+        );
+#ifdef DYLIB_FRAME_SHARED_ALIASES
+// Define zkeep directly: .set aliases inherit N_ALT_ENTRY from their target.
+// The independently replaced keep alias must leave zkeep's unwind intact.
+__asm__(".alt_entry _coal_frame_a_drop\n"
+        ".alt_entry _coal_frame_a_tail\n"
+        ".alt_entry _coal_frame_keep\n");
+#endif
 #endif
 extern "C" int coal_frame_root(int a, int b) {
     DYLIB_CXX_DWARF();

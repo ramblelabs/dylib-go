@@ -33,15 +33,19 @@ func machoPublicProviders(t *testing.T, target string) []string {
 }
 
 func machoPublicReverse(t *testing.T, input []byte) []byte {
+	return machoReversePublicSymbols(t, input, "_public_a", "_public_b")
+}
+
+func machoReversePublicSymbols(t *testing.T, input []byte, first, second string) []byte {
 	t.Helper()
 	b := append([]byte(nil), input...)
 	f := machoPointerMetadata(t, b)
 	a, c := -1, -1
 	for i, s := range f.Symtab.Syms {
-		if s.Name == "_public_a" {
+		if s.Name == first {
 			a = i
 		}
-		if s.Name == "_public_b" {
+		if s.Name == second {
 			c = i
 		}
 	}

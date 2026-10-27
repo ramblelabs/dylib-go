@@ -44,6 +44,9 @@ func testMachOFramePruning(t *testing.T, ordinary bool, public ...bool) {
 		frameFlags = append(frameFlags, "-DDYLIB_FRAME_PUBLIC_ALIASES")
 		strongFlags = []string{"-DDYLIB_FRAME_PUBLIC_ALIASES"}
 	}
+	if len(public) > 1 && public[1] {
+		frameFlags = append(frameFlags, "-DDYLIB_FRAME_SHARED_ALIASES")
+	}
 	for _, target := range []string{"x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		for _, opt := range []string{"-O0", "-O2"} {
 			for _, mode := range []string{"dwarf", "compact"} {
@@ -322,6 +325,9 @@ func testNativeMachOFrames(t *testing.T, ordinary bool, public ...bool) {
 	if len(public) != 0 && public[0] {
 		frameFlags = append(frameFlags, "-DDYLIB_FRAME_PUBLIC_ALIASES")
 		strongFlags = []string{"-DDYLIB_FRAME_PUBLIC_ALIASES"}
+	}
+	if len(public) > 1 && public[1] {
+		frameFlags = append(frameFlags, "-DDYLIB_FRAME_SHARED_ALIASES")
 	}
 	for _, opt := range []string{"-O0", "-O2"} {
 		for _, mode := range []string{"dwarf", "compact"} {
