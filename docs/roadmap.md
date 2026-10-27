@@ -71,6 +71,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Bounded ordinary Mach-O code/data/BSS weak-atom discard with subsections-via-symbols, retaining strong/private neighbors and unqualified alias-bearing storage; native pointer, lifecycle, BSS and C++ unwind calls plus Apple controls.
 - [x] Bounded public Mach-O alias groups, independent name overrides, canonical local references, interior/one-past forwarding through N_INDR and GOT, losing dependencies, lifecycle/lease ordering and retained C++ unwind PCs.
 - [x] Public Mach-O alternate entries sharing a non-alternate public start or next boundary, including strong alternates of weak owners, independent replacements, preceding-atom fixups, native code/BSS calls and C++ unwind cleanup.
+- [x] Zero-byte public Mach-O terminal owners in nonempty sections, independent body/end selection, strong end anchors, named versus numeric end pointers, code/BSS calls, retained storage/leases and preserved C++ frames.
 - [ ] Remaining relocations on existing targets; ambiguous/unbounded Mach-O atom forms and authenticated stubs.
 - [x] Legacy ELF `.ctors/.dtors` pointer tables, priorities, sentinels, and mixed modern-array execution.
 - [x] COFF integer-returning CRT initializers, permanent failure state, and owned exit-registration cleanup.

@@ -396,6 +396,19 @@ func TestMachOCoalescedValidation(t *testing.T) {
 						le.PutUint32(b[int(sec.Reloff):], offset)
 					}
 					f, err := parse("coalesced-boundaries.o", b)
+					if name == "zero_size" {
+						if err != nil || len(f.info.Unsupported) != 0 {
+							t.Fatalf("terminal weak definition: %v, %+v", err, f)
+						}
+						found := false
+						for _, atom := range f.obj.machoAtoms {
+							found = found || atom.start == atom.end && f.obj.symbols[atom.key].name == "coal_record"
+						}
+						if !found {
+							t.Fatal("terminal weak definition lost its boundary")
+						}
+						return
+					}
 					if name == "weak_alternate" || name == "same_address_alias" || name == "public_alternate" || name == "public_end" {
 						if err != nil || len(f.info.Unsupported) != 0 {
 							t.Fatalf("bounded public alias: %v, %+v", err, f)

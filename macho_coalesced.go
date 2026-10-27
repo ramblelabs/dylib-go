@@ -38,15 +38,13 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 			continue
 		}
 		section := index + 1
-		if ordinary {
-			weak := false
-			for _, i := range bySection[section] {
-				s := o.symbols[i]
-				weak = weak || s.global && s.weak
-			}
-			if !weak {
-				continue
-			}
+		sectionHasWeak := false
+		for _, i := range bySection[section] {
+			s := o.symbols[i]
+			sectionHasWeak = sectionHasWeak || s.global && s.weak
+		}
+		if ordinary && !sectionHasWeak {
+			continue
 		}
 		if input.Addr > math.MaxInt64-input.Size {
 			return fmt.Errorf("%s original address is too large", input.Name)
@@ -69,9 +67,6 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 				}
 				continue
 			}
-			if strict && s.global && s.weak && s.value == input.Size {
-				return fmt.Errorf("%s is a zero-size coalesced weak definition", s.name)
-			}
 			if f.Flags&macho.FlagSubsectionsViaSymbols == 0 && s.value != 0 {
 				return fmt.Errorf("%s needs subsections_via_symbols for multiple boundaries", input.Name)
 			}
@@ -86,10 +81,17 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 			return o.symbols[publicAlternates[i]].value < o.symbols[publicAlternates[j]].value
 		})
 		for i, start := range starts {
-			if start == input.Size || i+1 == len(starts) || starts[i+1] == start {
+			if i+1 < len(starts) && starts[i+1] == start {
 				continue
 			}
-			end := starts[i+1]
+			terminal := start == input.Size
+			if terminal && len(byOffset[start]) == 0 {
+				continue
+			}
+			end := start
+			if !terminal {
+				end = starts[i+1]
+			}
 			key := -1
 			var public []int
 			for _, index := range byOffset[start] {
@@ -116,6 +118,9 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 					key = index
 				}
 			}
+			if terminal && key < 0 {
+				continue // A private-only end does not establish public storage.
+			}
 			ambiguous := false
 			first := sort.Search(len(publicAlternates), func(i int) bool { return o.symbols[publicAlternates[i]].value >= start })
 			for _, index := range publicAlternates[first:] {
@@ -123,12 +128,12 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 				if value > end {
 					break
 				}
-				if value != input.Size && len(byOffset[value]) != 0 {
+				if len(byOffset[value]) != 0 && (value != input.Size || publicBoundaries[value]) {
 					// An alternate at a public boundary belongs to the owner
 					// starting there, including offset zero. Private boundaries
 					// do not establish that ownership, so keep their old policy.
 					ambiguous = ambiguous || !publicBoundaries[value]
-					if value == end {
+					if value == end && !terminal {
 						continue
 					}
 				}
@@ -144,7 +149,9 @@ func configureMachOCoalescing(o *object, f *macho.File, data []byte) error {
 				valid = valid && s.name != "" && !names[s.name] && (!s.weak || f.Symtab.Syms[index].Desc&0x80 != 0)
 				names[s.name] = true
 			}
-			if !weak {
+			// A public end boundary has its own address identity even when
+			// strong. It anchors end pointers independently of the last body.
+			if !weak && (!terminal || !sectionHasWeak) {
 				continue
 			}
 			if !valid || ambiguous {
@@ -257,7 +264,7 @@ func machoAtomAt(atoms []machoCoalescedAtom, section int, offset uint64) *machoC
 	i := sort.Search(len(atoms), func(i int) bool {
 		return atoms[i].section > section || atoms[i].section == section && atoms[i].start > offset
 	}) - 1
-	if i >= 0 && atoms[i].section == section && offset < atoms[i].end {
+	if i >= 0 && atoms[i].section == section && (offset < atoms[i].end || atoms[i].start == atoms[i].end && offset == atoms[i].start) {
 		return &atoms[i]
 	}
 	return nil

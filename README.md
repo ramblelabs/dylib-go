@@ -8,7 +8,7 @@ A Go runtime object loader: load `.o/.obj` files, link required members of `.a/.
 
 The project reimplements the general loading and linking mechanisms of early [DDL](https://github.com/Marenz/ddl). It uses Go's `debug/elf`, `debug/macho`, and `debug/pe`, with no LLVM C++, ORC, or JITLink dependency. D ABI, ModuleInfo, and D runtime compatibility are outside its scope.
 
-This is an experimental implementation with native execution tests. See the [platform and language matrix](docs/support.md) for its supported subset and limitations. On macOS amd64/arm64, [eligible weak atoms](docs/macho.md#coalesced-weak-atoms) in ordinary code/data/BSS and `S_COALESCED` sections support bounded public alias groups, including alternate entries sharing a public storage boundary. They retain independent name selection, preserve field/function-entry addresses through GOT cells and pointers, and prune associated DWARF/compact unwind metadata when weak code loses selection.
+This is an experimental implementation with native execution tests. See the [platform and language matrix](docs/support.md) for its supported subset and limitations. On macOS amd64/arm64, [eligible weak atoms](docs/macho.md#coalesced-weak-atoms) in ordinary code/data/BSS and `S_COALESCED` sections support bounded public alias groups, shared public boundaries and independent zero-byte terminal owners. They retain independent name selection, preserve field/function-entry addresses through GOT cells and pointers, and prune associated DWARF/compact unwind metadata when weak code loses selection.
 
 ## Platform, architecture, and format support
 

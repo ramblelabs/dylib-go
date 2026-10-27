@@ -129,14 +129,17 @@ func TestMachOOrdinaryBoundaries(t *testing.T) {
 				}
 				o := parseMachoAliases(t, b)
 				wantAtoms := 2
-				if mode == "zero_size" {
-					wantAtoms = 1
-				}
 				if mode == "no_subsections" {
 					wantAtoms = 0
 				}
 				if len(o.machoAtoms) != wantAtoms {
 					t.Fatal("unexpected bounded alias ownership", len(o.machoAtoms))
+				}
+				if mode == "zero_size" {
+					last := o.machoAtoms[len(o.machoAtoms)-1]
+					if last.start != last.end || o.symbols[last.key].name != "ordinary_empty" {
+						t.Fatal("terminal weak definition has no independent identity", last)
+					}
 				}
 				relocs, symbols := append([]relocation(nil), o.relocs...), append([]symbol(nil), o.symbols...)
 				name := "ordinary_sentinel"

@@ -38,11 +38,29 @@ neighbors retain their bytes and fixups; zero-fill atoms need no backing file
 bytes. A wholly discarded BSS section needs no storage, and an entirely
 redundant archive member remains unselected. Missing owners, colliding
 normalized API names, alternate entries sharing only a private boundary,
-and zero-size unmarked weak definitions
+empty sections and other unbounded forms
 remain outside bounded explicit coalescing. Ordinary inputs with these forms
 retain their prior storage/fixup behavior. Frame, compact-unwind and LSDA
 sections use associated-record pruning; native TLS and literal section models
 are unchanged.
+
+A public non-alternate name at the end of a nonempty section establishes an
+independent zero-byte boundary. Its ordinary names follow the same strong/weak
+and raw-name ordering rules; public and private alternate entries at that
+address belong to this terminal owner. Replacing the preceding body keeps the
+terminal address independent. Replacing only the terminal owner retargets its
+named pointers, GOT references and subtractors without discarding any preceding
+bytes, fixups or unwind records. A strong terminal name anchors the original
+end even when a preceding weak body loses selection. Terminal boundaries need
+the subsections flag in both ordinary and coalesced inputs.
+
+An explicit numeric `owner + size` relocation still follows the selected
+`owner`; a named end pointer follows the terminal owner. These addresses can
+coincide in the input without having the same selection identity. Retained end
+symbols keep the original section allocation as padding when its body is
+discarded. If both body and terminal definitions lose, the section can be
+released under the usual whole-section rules. Zero-byte symbols carry no code
+or data extent and never own a preceding frame or relocation.
 
 Among selected definitions, a strong definition wins over a weak one and the
 first selected weak definition wins a weak/weak tie. Mach-O real definitions,
@@ -131,6 +149,15 @@ input orders, objects/archives, dependency retries, constructor/destructor
 ordering, leased data after provider retirement and C++ RAII unwinding. Apple
 system-linked controls run the same value/address/call probes. Constants
 already folded by the assembler do not become interposable relocations.
+
+Terminal-owner controls use separately named storage anchors and padded
+providers, so adjacent output placement cannot masquerade as symbol rebinding.
+They check actual strong-provider values, named versus numeric end pointers,
+multiple terminal names, empty function entries replaced with callable bodies,
+real zero-fill storage, archive roots/retries, constructor/destructor ordering,
+retained end-symbol leases and C++ cleanup with unchanged live frame records.
+LLVM LLD can retain an original local end pointer after the public terminal
+name selects a replacement; the loader follows the Apple-linked controls.
 
 Shared-boundary tests also cover weak/strong alternate names with weak/strong
 non-alternate owners, the start and next public boundary, both input and nlist
