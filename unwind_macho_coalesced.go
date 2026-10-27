@@ -97,6 +97,43 @@ func machoOriginalUnwindImage(o *object) (*image, error) {
 	return im, nil
 }
 
+// Bound record storage before validating encodings or following CIE references.
+func machoFrameRecords(s *section) ([]machoFrameRecord, error) {
+	if uint64(len(s.data)) != s.size {
+		return nil, fmt.Errorf("unbacked Mach-O frame storage")
+	}
+	var records []machoFrameRecord
+	for offset := uint64(0); offset < s.size; {
+		if len(records) == 65536 {
+			return nil, fmt.Errorf("too many coalesced unwind records")
+		}
+		if s.size-offset < 4 {
+			return nil, fmt.Errorf("truncated coalesced frame length")
+		}
+		length := uint64(le.Uint32(s.data[offset:]))
+		if length == 0 {
+			if !allZero(s.data[offset:]) {
+				return nil, fmt.Errorf("data after coalesced frame terminator")
+			}
+			break
+		}
+		if length == 0xffffffff || length < 4 || length > s.size-offset-4 {
+			return nil, fmt.Errorf("invalid coalesced frame record length")
+		}
+		id := uint64(le.Uint32(s.data[offset+4:]))
+		r := machoFrameRecord{start: offset, end: offset + 4 + length, common: id == 0}
+		if id != 0 {
+			if id > offset+4 {
+				return nil, fmt.Errorf("invalid coalesced FDE CIE reference")
+			}
+			r.cie = offset + 4 - id
+		}
+		records = append(records, r)
+		offset = r.end
+	}
+	return records, nil
+}
+
 func (o *object) pruneMachOUnwind(losing []machoCoalescedAtom) error {
 	code := false
 	for _, atom := range losing {
@@ -165,33 +202,10 @@ func (o *object) pruneMachOUnwind(losing []machoCoalescedAtom) error {
 				records = append(records, machoFrameRecord{start: offset, end: offset + 32, keep: !drop})
 			}
 		} else {
-			for offset := uint64(0); offset < s.size; {
-				if len(records) == 65536 {
-					return fmt.Errorf("too many coalesced unwind records")
-				}
-				if s.size-offset < 4 {
-					return fmt.Errorf("truncated coalesced frame length")
-				}
-				length := uint64(le.Uint32(s.data[offset:]))
-				if length == 0 {
-					if !allZero(s.data[offset:]) {
-						return fmt.Errorf("data after coalesced frame terminator")
-					}
-					break
-				}
-				if length == 0xffffffff || length < 4 || length > s.size-offset-4 {
-					return fmt.Errorf("invalid coalesced frame record length")
-				}
-				id := uint64(le.Uint32(s.data[offset+4:]))
-				r := machoFrameRecord{start: offset, end: offset + 4 + length, common: id == 0}
-				if id != 0 {
-					if id > offset+4 {
-						return fmt.Errorf("invalid coalesced FDE CIE reference")
-					}
-					r.cie = offset + 4 - id
-				}
-				records = append(records, r)
-				offset = r.end
+			var err error
+			records, err = machoFrameRecords(s)
+			if err != nil {
+				return err
 			}
 			currentLSDA := uint64(0)
 			pointer := func(nullable bool) func(uint64, byte) error {

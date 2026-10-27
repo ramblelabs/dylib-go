@@ -128,10 +128,7 @@ func testNativeMachOAtomCalls(t *testing.T, ordinary bool) {
 				s := New(Options{})
 				defer s.Close()
 				load(t, s, archive)
-				expected := "coalesced atoms"
-				if ordinary {
-					expected = "unresolved symbol coal_unused_missing"
-				}
+				expected := "unresolved symbol coal_unused_missing"
 				if err := s.Link("coal_unused"); err == nil || !strings.Contains(err.Error(), expected) {
 					t.Fatal("selected public coalesced alias accepted", err)
 				}

@@ -5,26 +5,37 @@
 Raw macOS amd64/arm64 objects support bounded weak atoms in ordinary code,
 data and zero-fill sections (`S_REGULAR`, `S_ZEROFILL`, `S_GB_ZEROFILL`) and
 explicit `S_COALESCED` sections, in objects and lazy archives.
-`MH_SUBSECTIONS_VIA_SYMBOLS` and non-alternate nlist
-boundaries identify independent atoms; a single whole-section atom does not
-require that flag. Local aliases at a boundary and local `N_ALT_ENTRY` names
-inside an atom share its identity. Each coalescible atom needs one public weak
-definition. Multiple public names at a boundary, public alternate entries,
-zero-size weak atoms and ambiguous boundaries remain unsupported for explicit
-`S_COALESCED` atom parsing.
+`MH_SUBSECTIONS_VIA_SYMBOLS` and non-alternate nlist boundaries identify
+independent atoms; a single whole-section `S_COALESCED` atom does not require
+that flag. Eligible groups have named public owners and at least one public
+weak definition. Local aliases and local `N_ALT_ENTRY` names share the group's
+storage identity.
 
-Ordinary sections require `MH_SUBSECTIONS_VIA_SYMBOLS`. Only nonempty atoms
-with one named public weak definition and no public alternate entries are
-discardable. Strong/private neighbors retain their bytes and fixups; zero-fill
-atoms need no backing file bytes. A wholly discarded BSS section needs no
-storage, and an entirely redundant archive member remains unselected. Inputs
-without the subsections flag, ordinary zero-size weak names, and ordinary
-atoms with multiple public names or public alternate entries retain their
-existing storage/fixup behavior and independent global-name selection. General
-public-alias address identity and alias-group discard remain separate work.
-Frame, compact-unwind and LSDA sections use associated-record pruning rather
-than independent ordinary-atom selection; native TLS and literal section
-models are unchanged.
+At one boundary, a strong public name owns the storage. An all-weak group uses
+the lexicographically last raw Mach-O name, before C underscore removal or
+`debug/macho` dotted-name normalization. Symbol-table order does not change
+that owner. This strong-owner policy is fixed across hosts. Older Apple
+linkers can move a strong name with a replaced weak name when the weak name
+sorts last; standalone controls observe and validate that older policy as well
+as newer Apple behavior. Loader tests always require the strong name's original
+storage. Other public names forward to their owner while retaining their own
+weak or strong definition priority: replacing one alias does not automatically
+replace the storage. Public `N_ALT_ENTRY` names strictly inside an atom, or
+one-past its final section boundary, forward to the owner's selected address
+plus their original offset. A selected provider must have compatible data or
+function-entry offsets. Offset/address overflow and nonzero offsets into
+native TLS are rejected; `N_INDR` chains retain the accumulated offset.
+
+Ordinary sections require `MH_SUBSECTIONS_VIA_SYMBOLS`. Strong/private
+neighbors retain their bytes and fixups; zero-fill atoms need no backing file
+bytes. A wholly discarded BSS section needs no storage, and an entirely
+redundant archive member remains unselected. Missing owners, colliding
+normalized API names, public alternate entries at another non-alternate
+boundary (including a shared start), and zero-size unmarked weak definitions
+remain outside bounded explicit coalescing. Ordinary inputs with these forms
+retain their prior storage/fixup behavior. Frame, compact-unwind and LSDA
+sections use associated-record pruning; native TLS and literal section models
+are unchanged.
 
 Among selected definitions, a strong definition wins over a weak one and the
 first selected weak definition wins a weak/weak tie. Mach-O real definitions,
@@ -59,8 +70,10 @@ dependency discovery. Retained records keep corrected CIE back-references,
 pointer fields and relocations, including AMD64 implicit PC/LSDA pointers and
 ARM64 subtractor anchors. Exception tables referenced only by losing frames
 drop their fixups and private definitions; their bytes remain unused padding.
-Shared live exception tables retain their storage. Default loading continues
-to discard optional unwind metadata. Weak bodies in ordinary regular sections
+Shared live exception tables retain their storage. Frame PCs referring to a
+public alias bind to the original storage owner before independently overridden
+weak aliases lose their dependencies; personality pointers retain public-name
+binding. Default loading continues to discard optional unwind metadata. Weak bodies in ordinary regular sections
 use the same discard and unwind rules when their boundaries qualify above.
 
 Pruning uses the existing supported DWARF/compact encodings and at most 65,536
@@ -78,8 +91,8 @@ O0/O2 objects/archives with Go and llgo on macOS. They check strong/weak/common
 selection, reversed order, private/local/one-past pointer identity, explicit
 subtractor pairs, lazy poison dependencies, retry, lifecycle and unwind limits.
 Apple system-linked executables use the same probes, including equivalent
-section-relative encodings. Apple `ld -dead_strip` is the complete native
-control: LLVM 22 LLD retains the original location for the tested named local
+section-relative encodings. Apple `ld -dead_strip` supplies independent native
+controls, with the mixed-owner distinction above: LLVM 22 LLD retains the original location for the tested named local
 alternate-entry pointer, while Apple rebinds it to the selected atom.
 
 Interior-alias probes additionally check named field/one-past pointers, an
@@ -102,6 +115,15 @@ container because LLVM and older Apple archivers reject `S_GB_ZEROFILL`.
 Their Apple-linked value/pointer controls use equivalent C-produced weak zero
 storage because older Apple linkers reject raw weak BSS replacements; loader
 object/archive calls keep the original zero-fill sections and local aliases.
+
+Public-group tests additionally cover same-address weak/mixed definitions,
+interior and one-past public names, reversed nlist order, native function-entry
+calls, pointers/GOT cells and explicit cross-section subtractors. A real
+`N_INDR` chain checks a forwarded interior address. Go and llgo execute both
+input orders, objects/archives, dependency retries, constructor/destructor
+ordering, leased data after provider retirement and C++ RAII unwinding. Apple
+system-linked controls run the same value/address/call probes. Constants
+already folded by the assembler do not become interposable relocations.
 
 ## Forwarding aliases
 
