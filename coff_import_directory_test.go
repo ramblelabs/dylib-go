@@ -235,7 +235,10 @@ func TestNativeCOFFImportDirectory(t *testing.T) {
 					input = archive
 				}
 				if kind == "system_library" {
-					load(t, s, control)
+					// LoadLibrary's dependency search does not inherit our raw
+					// import file's directory. Keep both exact providers loaded
+					// before the OS independently binds the control's PE tables.
+					load(t, s, filepath.Join(dir, "first.dll"), filepath.Join(dir, "second.dll"), control)
 					call(t, s, "directory_imported", 20, 22, 2252)
 					return
 				}
