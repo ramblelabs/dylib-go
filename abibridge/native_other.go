@@ -10,6 +10,10 @@ func nativePrepare(uintptr, []byte) (uintptr, error)               { return 0, E
 func nativeInvoke(uintptr, uintptr, uintptr, []byte, []byte) error { return ErrUnsupported }
 func nativeRelease(uintptr, uintptr)                               {}
 
+func nativeInvokeValues(uintptr, uintptr, uintptr, []byte, []byte, []uint64) error {
+	return ErrUnsupported
+}
+
 func nativeValueType(uintptr, uintptr) (uintptr, ValueLayout, error) {
 	return 0, ValueLayout{}, ErrUnsupported
 }

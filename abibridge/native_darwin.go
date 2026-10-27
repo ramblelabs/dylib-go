@@ -16,6 +16,13 @@ static int32_t bridge_invoke(uintptr_t entry, uintptr_t plan, uintptr_t function
     return ((int32_t (*)(void *, const void *, const unsigned char *, uint32_t, unsigned char *, uint32_t, char *, uint32_t))entry)
         ((void *)plan, (const void *)function, args, args_size, result, result_size, error, capacity);
 }
+static int32_t bridge_invoke_values(uintptr_t entry, uintptr_t plan, uintptr_t function,
+    const unsigned char *args, uint32_t args_size, unsigned char *result, uint32_t result_size,
+    const uint64_t *handles, uint32_t count, char *error, uint32_t capacity) {
+    return ((int32_t (*)(void *, const void *, const unsigned char *, uint32_t, unsigned char *, uint32_t,
+        const uint64_t *, uint32_t, char *, uint32_t))entry)
+        ((void *)plan, (const void *)function, args, args_size, result, result_size, handles, count, error, capacity);
+}
 static uintptr_t bridge_value_type(uintptr_t entry, uintptr_t provider, uint64_t *layout, char *error, uint32_t capacity) {
     return (uintptr_t)((void *(*)(uintptr_t, uint64_t *, char *, uint32_t))entry)(provider, layout, error, capacity);
 }
@@ -81,6 +88,23 @@ func nativeInvoke(entry, plan, function uintptr, args, result []byte) error {
 
 func nativeRelease(entry, plan uintptr) {
 	C.bridge_release(C.uintptr_t(entry), C.uintptr_t(plan))
+}
+
+func nativeInvokeValues(entry, plan, function uintptr, args, result []byte, handles []uint64) error {
+	var message [1024]byte
+	var refs *C.uint64_t
+	if len(handles) != 0 {
+		refs = (*C.uint64_t)(unsafe.Pointer(&handles[0]))
+	}
+	status := C.bridge_invoke_values(C.uintptr_t(entry), C.uintptr_t(plan), C.uintptr_t(function), bytePointer(args), C.uint32_t(len(args)), bytePointer(result), C.uint32_t(len(result)),
+		refs, C.uint32_t(len(handles)), (*C.char)(unsafe.Pointer(&message[0])), C.uint32_t(len(message)))
+	runtime.KeepAlive(args)
+	runtime.KeepAlive(result)
+	runtime.KeepAlive(handles)
+	if status != 0 {
+		return nativeFailure(message[:])
+	}
+	return nil
 }
 
 func nativeValueType(entry, provider uintptr) (uintptr, ValueLayout, error) {

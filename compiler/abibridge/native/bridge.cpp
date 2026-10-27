@@ -55,7 +55,7 @@ Type type(Reader &reader, bool result) {
         if ((kind == ABIValueVoid ? 0 : ABIValueTypeSize(value.native.get())) != size ||
             (kind == ABIValueVoid ? 1 : ABIValueTypeAlignment(value.native.get())) != alignment) invalid("Scalar storage does not match this target.");
     } else if (kind == 13) {
-        if (!size || count) invalid("Invalid formally indirect storage.");
+        if (count) invalid("Invalid formally indirect storage.");
         value.native.reset(ABICreateSwiftIndirectStorageType(size, alignment, &error));
         check(value.native.get(), error);
     } else if (kind == 12) {
@@ -94,7 +94,7 @@ Bytes storage(uint32_t size, uint32_t alignment) {
 }
 }
 
-extern "C" uint32_t dylib_abibridge_version() noexcept { return 2; }
+extern "C" uint32_t dylib_abibridge_version() noexcept { return 3; }
 
 extern "C" void *dylib_abibridge_prepare(const unsigned char *signature, uint32_t size, char *message, uint32_t capacity) noexcept {
     try {
@@ -218,4 +218,50 @@ extern "C" void dylib_abibridge_value_commit(void *handle) noexcept {
 }
 extern "C" void dylib_abibridge_value_release(void *handle) noexcept {
     delete static_cast<ManagedValue *>(handle);
+}
+
+extern "C" int32_t dylib_abibridge_invoke_values(void *handle, const void *function,
+    const unsigned char *arguments, uint32_t argument_size, unsigned char *result, uint32_t result_size,
+    const uint64_t *handles, uint32_t count, char *message, uint32_t capacity) noexcept {
+    try {
+        auto *plan = static_cast<Plan *>(handle);
+        if (!plan || !function || !handles || count != plan->arguments.size() + 1 ||
+            (argument_size && !arguments) || (result_size && !result)) invalid("Invalid managed invocation buffers.");
+        auto managed = [](uint64_t handle, const Type &type, bool initialized) -> ManagedValue * {
+            auto *value = reinterpret_cast<ManagedValue *>(uintptr_t(handle));
+            if (value && (value->initialized != initialized || value->type->layout.size != type.size ||
+                value->type->layout.alignment != type.alignment)) invalid("Swift value does not match its invocation storage.");
+            return value;
+        };
+        auto *output = managed(handles[0], plan->result, false);
+        if (result_size != (output ? 0 : plan->result.size)) invalid("Invalid Swift result byte count.");
+        std::vector<Bytes> owned;
+        std::vector<void *> pointers;
+        size_t offset = 0;
+        for (size_t i = 0; i < plan->arguments.size(); ++i) {
+            const auto &type = plan->arguments[i];
+            if (auto *value = managed(handles[i+1], type, true)) {
+                pointers.push_back(value->bytes.get());
+            } else {
+                if (offset > argument_size || type.size > argument_size - offset) invalid("Invalid Swift argument byte count.");
+                auto copy = storage(type.size, type.alignment);
+                if (type.size) std::memcpy(copy.get(), arguments + offset, type.size);
+                offset += type.size;
+                pointers.push_back(copy.get()); owned.push_back(std::move(copy));
+            }
+        }
+        if (offset != argument_size) invalid("Trailing Swift argument bytes.");
+        auto bytes = output ? Bytes(nullptr, std::free) : storage(plan->result.size, plan->result.alignment);
+        ABIResolutionFailure *error = nullptr;
+        const bool success = ABIUnsafeInvokeSwiftCallInterface(plan->native.get(), ABIUnsafeFunctionAtAddress(function),
+            output ? output->bytes.get() : bytes.get(), pointers.data(), nullptr, &error);
+        check(success ? plan : nullptr, error);
+        // Swift returned an owned result directly into uninitialized storage.
+        // No representation copy or additional retain changes that ownership.
+        if (output) output->initialized = true;
+        else if (result_size) std::memcpy(result, bytes.get(), result_size);
+        return 0;
+    } catch (const std::exception &error) { failure(message, capacity, error.what()); }
+    catch (...) { failure(message, capacity, "Managed Swift invocation failed."); }
+    return 1;
 }

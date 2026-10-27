@@ -207,7 +207,7 @@ let package = Package(name: "DylibBridgeCore", platforms: [.macOS("15.4")], depe
 		"-I" + filepath.Join(source, "Sources", "ABIBridgeCore", "include"), cpp, archive,
 		"-L" + filepath.Join(filepath.Dir(filepath.Dir(swift)), "lib", "swift", "macosx"),
 		"-lswiftCore", "-lswift_Concurrency", "-framework", "Foundation", "-Wl,-rpath,/usr/lib/swift", "-Wl,-dead_strip"}
-	for _, name := range []string{"version", "prepare", "invoke", "release", "value_type", "value_type_release", "value_new", "value_pointer", "value_commit", "value_release"} {
+	for _, name := range []string{"version", "prepare", "invoke", "release", "value_type", "value_type_release", "value_new", "value_pointer", "value_commit", "value_release", "invoke_values"} {
 		link = append(link, "-Wl,-exported_symbol,_dylib_abibridge_"+name)
 	}
 	_, err = tool(ctx, compiler, append(link, "-o", library.Path)...)

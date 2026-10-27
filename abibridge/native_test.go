@@ -67,6 +67,47 @@ func fixture(t *testing.T, optimization string) string {
 			t.Fatal("fixture is not a native Swift entry", name)
 		}
 	}
+	sil := filepath.Join(dir, "native.sil")
+	run(t, "xcrun", append(args, "-emit-sil", "testdata/native.swift", "-o", sil)...)
+	ownership, err := os.ReadFile(sil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range []struct {
+		mode, swiftType string
+		indirect        bool
+	}{
+		{"direct", "DirectManaged", false}, {"mixed", "MixedManaged", false}, {"large", "LargeManaged", false},
+		{"indirect", "ManagedRecord", true}, {"empty", "EmptyValue", true},
+	} {
+		name := "fixture_owned_" + entry.mode + "_echo"
+		parameter, result := "@guaranteed ", "@owned "
+		if entry.indirect {
+			parameter, result = "@in_guaranteed ", "@out "
+		}
+		found := false
+		for _, line := range strings.Split(string(ownership), "\n") {
+			if strings.HasPrefix(line, "sil @"+name+" : ") {
+				found = strings.Contains(line, parameter+entry.swiftType) && strings.Contains(line, "-> "+result+entry.swiftType)
+			}
+		}
+		if !found {
+			t.Fatal("managed fixture lost guaranteed input / owned result SIL contract", name)
+		}
+		found = false
+		for _, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(line, "define ") && strings.Contains(line, "swiftcc ") && strings.Contains(line, "@"+name+"(") {
+				found = true
+				if strings.Contains(line, "sret(") != (entry.indirect || entry.mode == "large") {
+					t.Fatal("managed result lowering differs from its declared shape", line)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("missing managed swiftcc entry", name)
+		}
+	}
+	t.Log("verified guaranteed managed SIL inputs, owned results and direct/indirect swiftcc lowering")
 	t.Log("verified compiler-emitted swiftcc entries and formally indirect resilient storage")
 	return library
 }
@@ -176,6 +217,7 @@ func TestNativeSwift(t *testing.T) {
 			t.Run("calls", func(t *testing.T) { testCalls(t, facade, native) })
 			t.Run("pointers", func(t *testing.T) { testPointers(t, facade, native) })
 			t.Run("managed", func(t *testing.T) { testManagedValues(t, facade, native) })
+			t.Run("managed_calls", func(t *testing.T) { testManagedCalls(t, facade, native) })
 			t.Run("retirement", func(t *testing.T) { testRetirement(t, facade, native) })
 		})
 	}

@@ -11,20 +11,21 @@ import (
 // Close waits for active operations and releases its prepared interfaces.
 // A Runtime must not be copied or closed from one of its active native calls.
 type Runtime struct {
-	mu         sync.Mutex
-	cond       *sync.Cond
-	closed     bool
-	users      int
-	done       chan struct{}
-	closeErr   error
-	session    *dylib.Session
-	prepare    uintptr
-	invoke     uintptr
-	release    uintptr
-	interfaces map[*Call]bool
-	valueOps   valueEntries
-	valueTypes map[*ValueType]bool
-	values     map[*Value]bool
+	mu           sync.Mutex
+	cond         *sync.Cond
+	closed       bool
+	users        int
+	done         chan struct{}
+	closeErr     error
+	session      *dylib.Session
+	prepare      uintptr
+	invoke       uintptr
+	invokeValues uintptr
+	release      uintptr
+	interfaces   map[*Call]bool
+	valueOps     valueEntries
+	valueTypes   map[*ValueType]bool
+	values       map[*Value]bool
 }
 
 // Open loads a compatible facade. Neither ABIBridge nor libffi is a default Go
@@ -56,12 +57,12 @@ func Open(library string) (*Runtime, error) {
 		}
 	}
 	facadeVersion := nativeVersion(version)
-	if facadeVersion != 1 && facadeVersion != 2 {
+	if facadeVersion != 1 && facadeVersion != 2 && facadeVersion != 3 {
 		r.session.Close()
 		return nil, fmt.Errorf("abibridge: incompatible native facade")
 	}
 
-	if facadeVersion == 2 {
+	if facadeVersion >= 2 {
 		for name, output := range map[string]*uintptr{
 			"value_type": &r.valueOps.prepare, "value_type_release": &r.valueOps.releaseType,
 			"value_new": &r.valueOps.newValue, "value_pointer": &r.valueOps.pointer,
@@ -75,6 +76,16 @@ func Open(library string) (*Runtime, error) {
 				r.session.Close()
 				return nil, err
 			}
+		}
+	}
+	if facadeVersion >= 3 {
+		symbol, err := r.session.Resolve("dylib_abibridge_invoke_values")
+		if err == nil {
+			err = symbol.WithAddress(func(address uintptr) error { r.invokeValues = address; return nil })
+		}
+		if err != nil {
+			r.session.Close()
+			return nil, err
 		}
 	}
 	return r, nil
@@ -120,6 +131,14 @@ func (r *Runtime) Prepare(signature Signature) (*Call, error) {
 		return nil, err
 	}
 	defer r.end()
+	if signature.managed() && r.invokeValues == 0 {
+		return nil, ErrManagedUnsupported
+	}
+	for _, t := range append([]Type{signature.Result}, signature.Args...) {
+		if t.ValueType != nil && t.ValueType.owner != r {
+			return nil, fmt.Errorf("abibridge: Swift value type belongs to another runtime")
+		}
+	}
 	plan, err := nativePrepare(r.prepare, wire)
 	if err != nil {
 		return nil, err
@@ -153,6 +172,9 @@ func (c *Call) Invoke(function *dylib.Symbol, arguments ...[]byte) ([]byte, erro
 	defer c.mu.RUnlock()
 	if c.plan == 0 {
 		return nil, ErrClosed
+	}
+	if c.signature.managed() {
+		return nil, fmt.Errorf("abibridge: managed signatures require InvokeManaged")
 	}
 	if len(arguments) != len(c.signature.Args) {
 		return nil, fmt.Errorf("abibridge: got %d arguments, want %d", len(arguments), len(c.signature.Args))

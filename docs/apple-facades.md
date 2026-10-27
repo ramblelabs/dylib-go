@@ -63,6 +63,7 @@ callbacks. It has no UI/main-thread requirement. An adapter for a UI API must
 separately enforce its thread contract. Native async tasks, Swift closures,
 generics, thrown exceptions, SwiftUI values, arm64e authentication and non-macOS
 Apple devices are outside this qualification. The separate optional
-[ABIBridge adapter](abibridge.md) executes explicit trivial thin Swift calls and owns Copyable values through metadata and copy/destroy witnesses;
-these opaque-object fixtures do not execute ABIBridge. Managed argument passing,
+[ABIBridge adapter](abibridge.md) executes explicit thin Swift calls, including
+guaranteed managed arguments and owned Copyable results through metadata and value witnesses;
+these opaque-object fixtures do not execute ABIBridge. Additional Swift ownership conventions,
 runtime ownership and devices still need their own adapters and tests.

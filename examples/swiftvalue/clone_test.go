@@ -108,6 +108,31 @@ func TestNativeSwiftValueExample(t *testing.T) {
 			if err != nil || uses != 1 {
 				t.Fatal(err, uses)
 			}
+			input, err := kind.New(func(address uintptr) error {
+				_, err := initCall.Invoke(initialize, word(uint64(address)), word(42))
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			shape := abibridge.Type{Kind: abibridge.Storage, Size: 24, Alignment: 8,
+				Components: []abibridge.Component{{Kind: abibridge.Uint64}, {Kind: abibridge.Uint64, Offset: 8}, {Kind: abibridge.Int64, Offset: 16}}, ValueType: kind}
+			output, err := Transform(r, resolve("fixture_value_example_transform"), shape, input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input.Close()
+			err = output.WithAddress(func(address uintptr) error {
+				result, err := readCall.Invoke(read, word(uint64(address)))
+				if err == nil && binary.LittleEndian.Uint64(result) != 654 {
+					return fmt.Errorf("managed result: %v", result)
+				}
+				return err
+			})
+			output.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
 		})
 	}
 }

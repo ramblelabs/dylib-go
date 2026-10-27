@@ -774,7 +774,7 @@ directly callable.
 
 ## Native Swift calls with ABIBridge
 
-The optional [ABIBridge adapter](docs/abibridge.md) calls synchronous thin Swift functions on macOS amd64/arm64 through a separately built native facade. Go and llgo support fixed-width scalars, native pointers, explicitly described trivial Swift storage and formally indirect values without the Go `libffi` tag. Owned Swift values use complete metadata and copy/destroy witnesses; managed argument passing, generic calls, async/throws and device ABIs remain outside this adapter.
+The optional [ABIBridge adapter](docs/abibridge.md) calls synchronous thin Swift functions on macOS amd64/arm64 through a separately built native facade. Go and llgo support fixed-width scalars, native pointers, explicitly described trivial Swift storage and formally indirect values without the Go `libffi` tag. Owned Swift values use complete metadata and copy/destroy witnesses. `InvokeManaged` borrows guaranteed arguments and owns returned values using explicit passing layouts. Generic calls, async/throws and device ABIs remain outside this adapter.
 
 This [executed example](examples/swiftcall/call.go) receives a prepared runtime and the provider's symbol. Load Swift providers with `Options{KeepLibraries: true}`; native signatures require the actual Swift layout and ownership contract.
 
@@ -854,6 +854,38 @@ func CloneAndUse(kind *abibridge.ValueType, initialize, use func(uintptr) error)
 
 ```
 
+`Type.ValueType` selects owned storage for a compiler-confirmed Swift passing
+layout. `InvokeManaged` accepts `Argument{Value: input}` or trivial `Bytes`,
+protects inputs until the call returns, and returns either owned `Value` or
+trivial `Bytes`. Close the returned value when finished. This
+[executed transformation](examples/swiftvalue/invoke.go) leaves the input owned
+by its caller:
+
+<!-- embedme examples/swiftvalue/invoke.go -->
+
+```go
+package swiftvalue
+
+import (
+	dylib "github.com/ramblelabs/dylib-go"
+	"github.com/ramblelabs/dylib-go/abibridge"
+)
+
+// Transform calls a thin Swift (T) -> T using guaranteed input ownership.
+// shape includes the compiler-confirmed passing mode and prepared ValueType.
+// The input remains owned by the caller. Close the returned Value when finished.
+func Transform(runtime *abibridge.Runtime, symbol *dylib.Symbol, shape abibridge.Type, input *abibridge.Value) (*abibridge.Value, error) {
+	call, err := runtime.Prepare(abibridge.Signature{Result: shape, Args: []abibridge.Type{shape}})
+	if err != nil {
+		return nil, err
+	}
+	defer call.Close()
+	result, err := call.InvokeManaged(symbol, abibridge.Argument{Value: input})
+	return result.Value, err
+}
+
+```
+
 ## Language interfaces and calling conventions
 
 Dynamic `Bind` defaults to the host C ABI (`FFI_DEFAULT_ABI`), with explicit cdecl and Windows 386 stdcall/fastcall/thiscall selection. Language C exports and native language ABIs have different support levels:
@@ -880,8 +912,8 @@ Dynamic `Bind` defaults to the host C ABI (`FFI_DEFAULT_ABI`), with explicit cde
 | Go gc native functions | ABIInternal / ABI0 | Not implemented | Ordinary Go functions, strings, slices, and GC-managed values are not supported plugin interfaces |
 | llgo C interfaces | C exports / `c-shared`; typed C-pointer adapters | Verified subset | Six amd64/arm64 targets; 386 is unqualified; runtime initialization and ownership still apply |
 | Swift C exports | `@_cdecl`, C-compatible types | Verified subset | macOS amd64/arm64 dylibs; opaque object retain/release, leased Go observers and destruction cleanup; raw runtime-registration objects are rejected |
-| Swift native functions | Swift calling convention through optional ABIBridge | Explicit trivial-value subset | macOS amd64/arm64 dylibs: scalars, pointers, mixed/padded/large records, formally indirect values, register spills and retained calls; managed arguments, generics, async/throws and devices remain unsupported |
-| Owned Swift values | Complete metadata and copy/destroy witnesses through optional ABIBridge | Copyable native storage | macOS amd64/arm64: explicit initialization, independent copies, reference-counted members, borrowed pointer adapters and leases; no managed representation bytes or inferred passing convention |
+| Swift native functions | Swift calling convention through optional ABIBridge | Explicit synchronous subset | macOS amd64/arm64 dylibs: scalars, pointers, mixed/padded/large records, formally indirect values, register spills and retained calls; owned Copyable arguments/results with explicit layouts; generics, async/throws and devices remain unsupported |
+| Owned Swift values | Complete metadata and copy/destroy witnesses through optional ABIBridge | Copyable native storage | macOS amd64/arm64: explicit initialization, independent copies, reference-counted members, guaranteed arguments, owned results, borrowed pointer adapters and leases; no managed representation bytes or inferred passing convention |
 | Objective-C / ObjC++ C exports | `extern "C"` facade, host C ABI | Verified subset | macOS amd64/arm64 ObjC++ dylibs; ARC-managed opaque objects, retain/release and leased Go observers |
 | Objective-C / ObjC++ methods | Objective-C runtime dispatch | Not implemented | No built-in message-dispatch or ARC adapter; use an explicit C facade |
 | Other native languages | Explicit C-compatible exports | Unverified | No compiler-producer execution tests or current support claim |
