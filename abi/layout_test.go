@@ -20,7 +20,7 @@ func TestLayoutValidationAndUnavailable(t *testing.T) {
 	if _, err := LayoutOf(TypeDesc{Type: I32}, Convention(255)); err == nil || errors.Is(err, ErrUnavailable) {
 		t.Fatal("invalid convention:", err)
 	}
-	if !Available() {
+	if !StorageAvailable() {
 		if layout, err := LayoutOf(TypeDesc{Type: I32}, CDecl); !errors.Is(err, ErrUnavailable) || layout.Size != 0 || layout.Offsets != nil {
 			t.Fatalf("unavailable layout: %+v, %v", layout, err)
 		}

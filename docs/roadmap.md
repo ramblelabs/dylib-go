@@ -153,6 +153,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Universal Mach-O FAT32/FAT64 inspection and baseline macOS object/archive/library selection.
 - [x] Optional Clang scalar/typedef/opaque-pointer declaration generation, target guards, supported conventions, variadic prefixes and real Go/llgo calls.
 - [x] Native ABI layout inspection with independent Go results and compiler `sizeof`/alignment/member-offset execution tests.
+- [x] Host C scalar/ordinary-record/array storage and Default/CDecl layout queries without libffi, Go layout/copy code, native C interoperability, stable leases and existing Go/llgo CI execution.
 - [x] Compiler-validated ordinary record declarations, array members and typed struct-pointer parameters/results, including generated Go/llgo execution.
 - [x] Function-pointer parameter/result prototypes, captured scalar/struct/pointer callbacks, native factories, variadic pointer calls and Windows 386 conventions.
 - [x] Direct fixed-scalar/opaque-pointer C cdecl llgo adapters, all primitive widths, native pointer lifetimes and generated runtime execution without libffi.

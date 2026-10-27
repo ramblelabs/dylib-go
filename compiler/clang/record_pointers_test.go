@@ -122,7 +122,7 @@ func TestCallbackRecordFieldsAcrossTargets(t *testing.T) {
 				}
 			}
 			if target.os == runtime.GOOS && target.arch == runtime.GOARCH {
-				if abi.Available() {
+				if abi.StorageAvailable() {
 					if _, err := h.ForHost("echo"); err != nil {
 						t.Fatal(err)
 					}

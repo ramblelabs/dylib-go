@@ -30,7 +30,7 @@ func TestNativeValueValidationAndUnavailable(t *testing.T) {
 	if owner, err := NewNativeValue(description, initial); err == nil || owner != nil || errors.Is(err, ErrUnavailable) {
 		t.Fatal("nested temporary pointer accepted:", owner, err)
 	}
-	if !Available() {
+	if !StorageAvailable() {
 		if owner, err := NewNativeValue(TypeDesc{Type: I32}, Int32(42)); !errors.Is(err, ErrUnavailable) || owner != nil {
 			t.Fatal("unavailable storage:", owner, err)
 		}

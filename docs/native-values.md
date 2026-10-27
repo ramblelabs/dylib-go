@@ -7,9 +7,11 @@ remain independently owned.
 
 `abi.NewNativeValue(description, initial)` owns stable host C storage for scalars,
 ordinary structs and fixed arrays. It snapshots logical metadata and copies the
-initial value field by field. It requires cgo and `-tags libffi` with either Go
-or llgo. Layouts use the same backend as `abi.LayoutOf(description, abi.CDecl)`;
-the 64 KiB native value limit applies. This is an independent byte-storage owner,
+initial value field by field. It requires cgo with either Go or llgo and does
+not require the libffi tag. `abi.StorageAvailable()` reports this capability.
+The host C compiler supplies scalar size/alignment; Go computes ordinary record
+and array layouts and copies scalar bits into a native allocation. Layouts
+match `abi.LayoutOf(description, abi.CDecl)`; the 64 KiB native value limit applies. This is an independent byte-storage owner,
 not a Session resource or a C++/Swift object constructor/destructor adapter.
 
 | Operation | Contract |
@@ -52,8 +54,8 @@ nil/zero/idempotent Close is harmless. Invalid writes leave storage unchanged.
 The [library example](../examples/nativevalue/main.go) publishes a record to C,
 calls C again through the retained address, and unregisters before releasing
 storage. Run `examples/run.sh <go|llgo> library`; the existing example suite builds
-and executes it, printing 42. Native object/archive/library tests compare C
-sizes/alignment/offsets, retain addresses across GC and calls, mutate records and
+and executes it without `-tags libffi`, printing 42. Native object/archive/library
+tests compare C sizes/alignment/offsets, retain addresses across GC and calls, mutate records and
 arrays, and read through a C-invoked Go callback. ABI tests cover every scalar,
 pointer/nested-array snapshots, stable/interior addresses, invalid writes,
 concurrent reads/writes, retirement and unavailable backends. The existing eight

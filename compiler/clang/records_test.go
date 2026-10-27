@@ -87,10 +87,10 @@ func TestRecordsAcrossTargets(t *testing.T) {
 			}
 			_, err = h.ForHost("echo")
 			matching := target.os == runtime.GOOS && target.arch == runtime.GOARCH
-			if matching && abi.Available() && err != nil {
+			if matching && abi.StorageAvailable() && err != nil {
 				t.Fatal("native layout validation:", err)
 			}
-			if matching && !abi.Available() && !errors.Is(err, abi.ErrUnavailable) {
+			if matching && !abi.StorageAvailable() && !errors.Is(err, abi.ErrUnavailable) {
 				t.Fatal("missing native layout backend:", err)
 			}
 			if !matching && (err == nil || errors.Is(err, abi.ErrUnavailable)) {
@@ -134,7 +134,7 @@ func TestRecordMetadataValidationAndBudgets(t *testing.T) {
 	if err := h.decodeRecordLayouts([]byte("invalid")); err == nil {
 		t.Fatal("invalid layout AST accepted")
 	}
-	if abi.Available() {
+	if abi.StorageAvailable() {
 		original := h.Records[0].Layout
 		h.Records[0].Layout.Size += h.Records[0].Layout.Alignment
 		if _, err := h.ForHost("echo"); err == nil || !strings.Contains(err.Error(), "layout mismatch") {

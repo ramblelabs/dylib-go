@@ -12,9 +12,10 @@ type Layout struct {
 	Offsets         []uint64
 }
 
-// LayoutOf queries the same native type backend used by calls and callbacks.
-// It requires cgo and -tags libffi. It does not compute a foreign target's layout
-// or establish compatibility with an arbitrary compiler's record packing.
+// LayoutOf queries host C storage layouts. Default and CDecl require cgo;
+// other conventions also require -tags libffi and backend support. It does not
+// compute a foreign target's layout or establish compatibility with an
+// arbitrary compiler's record packing.
 // Pointer queries describe the address itself, without laying out its pointee.
 // Arrays may be queried as storage even though C cannot pass them by value.
 // The backend's 64 KiB aggregate limit applies; void has no storage layout.

@@ -1,7 +1,19 @@
-//go:build libffi && cgo && (darwin || linux || windows)
+//go:build cgo && (darwin || linux || windows)
 
 // This example lets C retain a leased record across separate calls.
 package main
+
+/*
+#include <stdint.h>
+typedef struct { int32_t a, b; } NativePair;
+static void save_pair(uintptr_t entry, uintptr_t pair) {
+    ((void (*)(NativePair *))entry)((NativePair *)pair);
+}
+static int32_t sum_pair(uintptr_t entry) {
+    return ((int32_t (*)(void))entry)();
+}
+*/
+import "C"
 
 import (
 	"fmt"
@@ -17,11 +29,11 @@ func run(path string) error {
 	if err := session.Load(path); err != nil {
 		return err
 	}
-	store, err := session.Bind("native_value_save_pair", abi.Signature{Args: []abi.Type{abi.Pointer}})
+	store, err := session.Resolve("native_value_save_pair")
 	if err != nil {
 		return err
 	}
-	sum, err := session.Bind("native_value_sum_pair", abi.Signature{Result: abi.I32})
+	sum, err := session.Resolve("native_value_sum_pair")
 	if err != nil {
 		return err
 	}
@@ -38,23 +50,16 @@ func run(path string) error {
 		return err
 	}
 	defer owner.Close()
-	return owner.WithAddress(func(address uintptr) (err error) {
-		if _, err = store.Call(abi.Ptr(address)); err != nil {
-			return err
-		}
-		// Unregister before WithAddress releases its lease, even on failure.
-		defer func() {
-			_, cleanup := store.Call(abi.Ptr(0))
-			if err == nil {
-				err = cleanup
-			}
-		}()
-		value, err := sum.Call()
-		if err != nil {
-			return err
-		}
-		fmt.Println(int32(value.Bits))
-		return nil
+	return store.WithAddress(func(entry uintptr) error {
+		return owner.WithAddress(func(address uintptr) error {
+			C.save_pair(C.uintptr_t(entry), C.uintptr_t(address))
+			// Unregister before releasing the storage and code leases.
+			defer C.save_pair(C.uintptr_t(entry), 0)
+			return sum.WithAddress(func(entry uintptr) error {
+				fmt.Println(int32(C.sum_pair(C.uintptr_t(entry))))
+				return nil
+			})
+		})
 	})
 }
 

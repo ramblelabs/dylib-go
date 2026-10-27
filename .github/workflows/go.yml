@@ -94,6 +94,8 @@ jobs:
           pkg-config --modversion libffi
       - name: Execute C/C++, archives, shared libraries and selected language interfaces
         run: |
+          # Host C storage is also available without the dynamic ABI backend.
+          go test -count=1 -v ./abi
           if [[ '${{ matrix.target }}' == darwin-amd64 ]]; then
             bash scripts/test-native.sh go
           else

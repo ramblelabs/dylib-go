@@ -47,10 +47,11 @@ result=$("$binary" "$library")
 test "$result" = 42
 echo "$compiler dynamic C struct with array members: $result"
 
-"$compiler" build -tags libffi -o "$binary" ./examples/nativevalue
+"$compiler" build -o "$binary" ./examples/nativevalue
 result=$("$binary" "$library")
 test "$result" = 42
 echo "$compiler leased native record retained across C calls: $result"
+echo "$compiler native storage without libffi: $result"
 
 "$compiler" build -tags libffi -o "$binary" ./examples/registration
 result=$("$binary" "$library")
