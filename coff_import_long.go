@@ -103,7 +103,10 @@ func (g coffImportGraph) convert(o *object) (*object, bool) {
 	if converted, ok := g.convertPure(o); ok {
 		return converted, true
 	}
-	return g.convertMixed(o)
+	if converted, ok := g.convertMixed(o); ok {
+		return converted, true
+	}
+	return g.convertDirectory(o)
 }
 
 func coffImportSections(o *object) (map[string]int, bool) {
