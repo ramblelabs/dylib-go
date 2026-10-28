@@ -15,7 +15,7 @@ type longImportFixture struct {
 	data           bool
 }
 
-func longImportAssembly(target string, entry longImportFixture) string {
+func longImportAssembly(target string, entry longImportFixture, cachedWord ...string) string {
 	public := entry.public
 	if strings.HasPrefix(target, "i686") {
 		public = "_" + public
@@ -44,6 +44,9 @@ func longImportAssembly(target string, entry longImportFixture) string {
 		word += ".long 0\n"
 	}
 	text += ".section .idata$4,\"dr\"\n" + word
+	if len(cachedWord) != 0 {
+		word = cachedWord[0]
+	}
 	text += ".section .idata$5,\"dr\"\n.global " + iat + "\n" + iat + ":\n" + word
 	text += ".section .idata$6,\"dr\"\n"
 	if entry.ordinal == 0 {

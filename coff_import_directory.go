@@ -9,7 +9,8 @@ import (
 // A self-contained IMAGE_IMPORT_DESCRIPTOR directory identifies each DLL's
 // terminated IAT/ILT explicitly. Repeated metadata sections retain their section
 // identity: table offsets or section names alone never associate two DLLs.
-// This decoder handles metadata, not the PE loader's bound/delay-import state.
+// Cached bound addresses are discarded in favor of a complete ILT. The decoder
+// never executes cached IAT values or implements the PE loader's delay state.
 type coffImportDirectory struct {
 	graph    coffImportGraph
 	o        *object
@@ -161,7 +162,8 @@ func (d *coffImportDirectory) directory() bool {
 		if allZero(bytes) && !lookupRelocation && !nameRelocation && !addressRelocation {
 			return len(d.entries) != 0 && allZero(sec.data[offset:])
 		}
-		if !allZero(bytes[4:12]) {
+		bound := !allZero(bytes[4:8])
+		if !bound && !allZero(bytes[8:12]) {
 			return false
 		}
 		iat, yes := d.reference(index, offset+16)
@@ -173,6 +175,9 @@ func (d *coffImportDirectory) directory() bool {
 		// is absent. A nonzero field or any relocation must still identify an
 		// actual ILT; a malformed lookup reference must never become a fallback.
 		ilt := iat
+		if bound && !lookupRelocation {
+			return false // A cached address is never an import lookup entry.
+		}
 		if lookupRelocation || !allZero(bytes[:4]) {
 			var ok bool
 			ilt, ok = d.reference(index, offset)
@@ -189,14 +194,14 @@ func (d *coffImportDirectory) directory() bool {
 			return false
 		}
 		dll, err := coffDLLName(dll)
-		if err != nil || !d.table(ilt, iat, dll) {
+		if err != nil || !d.table(ilt, iat, dll, bound) {
 			return false
 		}
 	}
 	return false // An explicit null descriptor terminates the bounded directory.
 }
 
-func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string) bool {
+func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string, bound bool) bool {
 	if ilt.offset%d.width != 0 || iat.offset%d.width != 0 {
 		return false
 	}
@@ -213,13 +218,20 @@ func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string) bool {
 		d.occupied[x], d.occupied[y] = true, true
 		left := d.o.sections[ilt.section].data[ilt.offset : ilt.offset+d.width]
 		right := d.o.sections[iat.section].data[iat.offset : iat.offset+d.width]
-		if !bytes.Equal(left, right) {
-			return false
-		}
 		_, a := d.sites[x]
 		_, b := d.sites[y]
-		if allZero(left) && !a && !b {
-			return count != 0
+		if allZero(left) && !a {
+			return count != 0 && allZero(right) && !b
+		}
+		if bound {
+			// A complete ILT supplies the identity. Bound timestamps,
+			// forwarder hints and native addresses are stale cache metadata;
+			// resolution below creates fresh session-owned import slots.
+			if b || allZero(right) {
+				return false
+			}
+		} else if !bytes.Equal(left, right) {
+			return false
 		}
 		if len(d.entries) >= len(d.o.symbols) || len(d.entries) >= 65536 {
 			return false
@@ -241,7 +253,7 @@ func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string) bool {
 			}
 			first, ok := d.reference(ilt.section, ilt.offset)
 			second, yes := first, ok
-			if x != y {
+			if !bound && x != y {
 				second, yes = d.reference(iat.section, iat.offset)
 			}
 			if !ok || !yes || first != second || !d.section(first.section, ".idata$6") {

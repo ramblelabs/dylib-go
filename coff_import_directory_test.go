@@ -85,7 +85,45 @@ func importDirectoryAssemblyTables(target string, groups []directoryFixture, ord
 	return importDirectoryAssemblyLayout(target, groups, order, omit, false)
 }
 
+type directoryLayout struct {
+	repeated               bool
+	timestamps, forwarders []uint32
+}
+
+func (layout directoryLayout) timestamp(group int) uint32 {
+	if group < len(layout.timestamps) {
+		return layout.timestamps[group]
+	}
+	return 0
+}
+func (layout directoryLayout) forwarder(group int) uint32 {
+	if group < len(layout.forwarders) {
+		return layout.forwarders[group]
+	}
+	return 0
+}
+
+func directoryCachedAddress(target string, group, slot int) uint64 {
+	base := uint64(0xfedcba9800000000)
+	if strings.HasPrefix(target, "i686") {
+		base = 0xfedc0000
+	}
+	return base + uint64(group*0x100+slot+1)
+}
+
+func directoryCachedWord(target string, group, slot int) string {
+	word := ".quad"
+	if strings.HasPrefix(target, "i686") {
+		word = ".long"
+	}
+	return fmt.Sprintf("%s 0x%x\n", word, directoryCachedAddress(target, group, slot))
+}
+
 func importDirectoryAssemblyLayout(target string, groups []directoryFixture, order []int, omit []bool, repeated bool) string {
+	return importDirectoryAssemblyOptions(target, groups, order, omit, directoryLayout{repeated: repeated})
+}
+
+func importDirectoryAssemblyOptions(target string, groups []directoryFixture, order []int, omit []bool, layout directoryLayout) string {
 	var text strings.Builder
 	if strings.HasPrefix(target, "i686") {
 		// These leaf import thunks install no exception handlers.
@@ -103,7 +141,7 @@ func importDirectoryAssemblyLayout(target string, groups []directoryFixture, ord
 		} else {
 			fmt.Fprintf(&text, ".rva ilt%d\n", i)
 		}
-		fmt.Fprintf(&text, ".long 0,0\n.rva dll%d\n.rva iat%d\n", i, i)
+		fmt.Fprintf(&text, ".long %d,%d\n.rva dll%d\n.rva iat%d\n", layout.timestamp(i), layout.forwarder(i), i, i)
 	}
 	text.WriteString(".zero 20\n")
 	word := ".quad 0\n"
@@ -119,7 +157,11 @@ func importDirectoryAssemblyLayout(target string, groups []directoryFixture, ord
 		fmt.Fprintf(&part, ".section .idata$5,\"dr\"\n.balign 8\niat%d:\n", i)
 		for j, entry := range group.entries {
 			hint := fmt.Sprintf("hint%d_%d", i, j)
-			body := strings.NewReplacer(".rva hint\n", ".rva "+hint+"\n", "hint:\n", hint+":\n", ".rva dll_head\n", "").Replace(longImportAssembly(target, entry))
+			words := []string{}
+			if layout.timestamp(i) != 0 {
+				words = append(words, directoryCachedWord(target, i, j))
+			}
+			body := strings.NewReplacer(".rva hint\n", ".rva "+hint+"\n", "hint:\n", hint+":\n", ".rva dll_head\n", "").Replace(longImportAssembly(target, entry, words...))
 			if missing {
 				start := strings.Index(body, ".section .idata$4,")
 				end := strings.Index(body, ".section .idata$5,")
@@ -133,7 +175,7 @@ func importDirectoryAssemblyLayout(target string, groups []directoryFixture, ord
 		part.WriteString(".section .idata$5,\"dr\"\n" + word)
 		fmt.Fprintf(&part, ".section .idata$7,\"dr\"\ndll%d:\n.asciz %q\n", i, group.dll)
 		body := part.String()
-		if repeated {
+		if layout.repeated {
 			// Older assemblers cannot spell repeated ordinary COFF sections.
 			// Compile distinct fixed-width names; coffDirectoryAssembly restores
 			// their names without changing section or relocation indexes.
@@ -268,6 +310,10 @@ func TestNativeCOFFImportDirectory(t *testing.T) {
 }
 
 func testNativeCOFFImportDirectory(t *testing.T, omit []bool, repeated bool) {
+	testNativeCOFFImportDirectoryLayout(t, omit, directoryLayout{repeated: repeated})
+}
+
+func testNativeCOFFImportDirectoryLayout(t *testing.T, omit []bool, layout directoryLayout) {
 	t.Helper()
 	if runtime.GOOS != "windows" {
 		t.Skip("native DLL imports require Windows")
@@ -292,8 +338,11 @@ func testNativeCOFFImportDirectory(t *testing.T, omit []bool, repeated bool) {
 		t.Fatal(err)
 	}
 	command(t, "lld-link", "/dll", "/noentry", "/nodefaultlib", "/def:"+definition, "/out:"+filepath.Join(dir, "second.dll"), secondaryObject)
+	if len(layout.timestamps) != 0 {
+		checkBoundProviders(t, dir, layout)
+	}
 	target := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH] + "-w64-windows-gnu"
-	imports, _ := coffDirectoryAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), []int{1, 0}, omit, repeated))
+	imports, _ := coffDirectoryAssembly(t, target, importDirectoryAssemblyOptions(target, directoryGroups(), []int{1, 0}, omit, layout))
 	obj := filepath.Join(dir, "directory.obj")
 	if err := os.WriteFile(obj, imports, 0600); err != nil {
 		t.Fatal(err)
@@ -309,7 +358,10 @@ func testNativeCOFFImportDirectory(t *testing.T, omit []bool, repeated bool) {
 	for _, opt := range []string{"-O0", "-O2"} {
 		consumer := compile(t, source, source+opt+".obj", "--target="+target, opt)
 		control := filepath.Join(dir, "control"+opt+".dll")
-		if len(omit) == 0 {
+		if len(layout.timestamps) != 0 {
+			linkDirectoryControl(t, target, control, obj, consumer)
+			checkBoundDirectoryControl(t, target, control, layout, []int{1, 0})
+		} else if len(omit) == 0 {
 			directoryControl(t, target, control, obj, consumer)
 		} else {
 			linkDirectoryControl(t, target, control, obj, consumer)

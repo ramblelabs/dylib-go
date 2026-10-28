@@ -84,14 +84,22 @@ When `OriginalFirstThunk` is zero and has no relocation, the unbound IAT supplie
 the lookup entries. Each descriptor may independently include or omit its ILT;
 the entire `.idata$4` section may be absent. A nonzero or relocated lookup field
 must still reference a valid ILT. A malformed reference never selects the IAT
-fallback. The timestamp and forwarder fields must remain zero; prebound native
-addresses and delay-import state are rejected. The
-[PE specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#import-directory-table)
+fallback. Unbound descriptors keep zero timestamp/forwarder fields. A bound
+descriptor requires a complete ILT; its cached IAT is never a lookup fallback.
+The [PE specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#import-directory-table)
 describes the matching lookup/address contents before binding.
 
-The Go decoder validates matching IAT/ILT bytes and name references when both
-tables exist, nonoverlap, 16-bit nonzero ordinals, complete relative-address fields and bounded native
-names. Each imported row needs one public `__imp_` identity. Named rows refer
+For unbound descriptors the Go decoder validates matching IAT/ILT bytes and
+name references when both tables exist. For bound descriptors it validates the
+ILT independently, discards timestamp/forwarder hints and all cached addresses,
+and resolves every DLL/name/ordinal through fresh session-owned import slots.
+Cached slots must be nonzero, contain no relocations and end at the ILT's null
+terminator. Eager binding always creates fresh session-owned slots. Descriptors
+can independently be bound or unbound; an unbound descriptor can still omit its
+ILT.
+
+The decoder also checks nonoverlap, 16-bit nonzero ordinals, complete
+relative-address fields and bounded native names. Each imported row needs one public `__imp_` identity. Named rows refer
 to hint/name entries in `.idata$6`; DLL names reside in `.idata$6` or `.idata$7`.
 An optional `.text` contains only the existing exact tail-jump templates, matched
 to their own IAT rows. Additional callable names and const/data aliases keep
@@ -115,8 +123,9 @@ bytes and fixups, including sections not referenced by a descriptor.
 
 This form requires a single `.idata$2` directory, at most one import `.text`
 section and self-contained metadata references. Public descriptor/name helpers,
-separate null descriptor sections, bound imports, delay imports,
-auto-import/pseudo-relocations and arbitrary inline code remain unqualified.
+separate null descriptor sections, full bound-import-directory metadata,
+delay imports, auto-import/pseudo-relocations and arbitrary inline code remain
+unqualified.
 Complete DLLs continue to use the OS loader for those native table layouts.
 
 Compiler-produced AMD64/ARM64/i386 objects and rejection cases run on all
@@ -136,8 +145,8 @@ IAT lookup tests cover omitted and mixed-present ILTs, reversed descriptor order
 same-name exports from distinct DLLs, names/ordinals/data/const aliases, empty
 optional lookup sections and mixed ordinary/COMDAT members. Native Windows
 object/archive and OS-library controls run at `-O0`/`-O2`; mixed members retain
-dependency retry, lazy unused imports and lifecycle selection. Bound pointers,
-nonzero or malformed lookup references, overlapping subtables, missing terminators
+dependency retry, lazy unused imports and lifecycle selection. Unmarked bound
+pointers, bound descriptors without an ILT, nonzero or malformed lookup references, overlapping subtables, missing terminators
 and unclaimed metadata bytes/fixups are rejected without changing staged input.
 
 ## Weak externals
@@ -206,3 +215,13 @@ ILT-presence combinations, reversed descriptors, retained ordinary/COMDAT code
 and malformed later sections. LLD/PE controls and native Windows object/archive/
 DLL calls qualify function/data/ordinal identity; mixed members also cover lazy
 unused imports, failed-link retry and lifecycle selection.
+
+
+Bound-cache tests cover mixed descriptors, nonzero and marker timestamps,
+stale forwarder metadata, ordinary/repeated sections, absent ILTs in unbound
+neighbors, named/data/ordinal imports and ordinary/promoted-bigobj inputs.
+LLD/PE controls check that actual cache bytes survive linking. Windows native
+tests use mismatching provider timestamps and deliberately invalid cache
+addresses, then call objects, archives and OS-loaded DLLs at both optimization
+levels. Retained ordinary/COMDAT code also exercises dependency retry, lazy
+imports, initialization/finalization and discarded groups.
