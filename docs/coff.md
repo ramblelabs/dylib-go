@@ -72,13 +72,20 @@ ARM64EC hybrid imports, delay-load tables, and linker directives for automatic d
 ## Self-contained import directories
 
 A raw object can instead contain a complete bounded `IMAGE_IMPORT_DESCRIPTOR`
-array in `.idata$2`. Each descriptor explicitly identifies a DLL name and its
+array in one or more `.idata$2` sections. Each descriptor explicitly identifies a DLL name and its
 terminated `.idata$5` address subtable and an optional `.idata$4` lookup subtable.
 Multiple descriptors
 may identify different DLLs exporting identical names. RVA references determine
 that association; the decoder does not infer it from table or symbol order.
-The directory ends with a null descriptor, and each nonempty subtable ends with
-a null pointer. Pointer-aligned zero padding between subtables is allowed.
+The directory ends with a null descriptor in the final `.idata$2` contribution,
+or in one separate 20-byte zero `.idata$3` section. Same-name descriptor sections
+are composed in their original section order, as in the native linker; a null
+descriptor cannot hide a later contribution. An inline null and a separate
+null cannot coexist. Every contribution must contain complete 20-byte records.
+Split contributions allow at most four-byte section alignment, preventing native
+linker padding from becoming an unintended null descriptor.
+Each nonempty subtable ends with a null pointer. Pointer-aligned zero padding
+between subtables is allowed.
 
 When `OriginalFirstThunk` is zero and has no relocation, the unbound IAT supplies
 the lookup entries. Each descriptor may independently include or omit its ILT;
@@ -121,9 +128,15 @@ relocations select the exact section; section names or physical ordering never
 select a provider. Every lookup/address section is checked for unused nonzero
 bytes and fixups, including sections not referenced by a descriptor.
 
-This form requires a single `.idata$2` directory, at most one import `.text`
-section and self-contained metadata references. Public descriptor/name helpers,
-separate null descriptor sections, full bound-import-directory metadata,
+Global labels may identify validated descriptor starts, the null descriptor or
+DLL-name starts. They are metadata-only and disappear during conversion; they
+do not expose native table addresses. Ordinary code/data relocations referencing
+them still prevent conversion. Labels inside records/strings, unknown metadata
+fixups, grouped metadata and malformed later fragments also prevent conversion
+without changing the original object.
+
+This form requires at most one import `.text` section and self-contained metadata
+references. Cross-object descriptor composition, full bound-import-directory metadata,
 delay imports, auto-import/pseudo-relocations and arbitrary inline code remain
 unqualified.
 Complete DLLs continue to use the OS loader for those native table layouts.
@@ -148,6 +161,12 @@ object/archive and OS-library controls run at `-O0`/`-O2`; mixed members retain
 dependency retry, lazy unused imports and lifecycle selection. Unmarked bound
 pointers, bound descriptors without an ILT, nonzero or malformed lookup references, overlapping subtables, missing terminators
 and unclaimed metadata bytes/fixups are rejected without changing staged input.
+
+Split-directory tests cover separate/inline terminators, repeated descriptor and
+lookup/name sections, metadata-only global labels, bound caches and absent ILTs.
+Independent PE controls consume the original object bytes for AMD64/ARM64/i386.
+Windows Go/llgo calls exercise objects, lazy archives and OS-linked DLLs, plus
+mixed ordinary/COMDAT lifecycle selection and failed-dependency retry.
 
 ## Weak externals
 
