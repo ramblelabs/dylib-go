@@ -17,14 +17,7 @@ const directoryConsumer = "__declspec(dllimport) int first(int,int),second(int,i
 
 func directoryControl(t *testing.T, target, output, imports, consumer string) {
 	t.Helper()
-	machine := "X64"
-	if strings.HasPrefix(target, "aarch64") {
-		machine = "ARM64"
-	}
-	if strings.HasPrefix(target, "i686") {
-		machine = "X86"
-	}
-	command(t, "lld-link", "/dll", "/noentry", "/nodefaultlib", "/machine:"+machine, "/out:"+output, "/export:directory_imported", imports, consumer)
+	linkDirectoryControl(t, target, output, imports, consumer)
 	f, err := pe.Open(output)
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +32,18 @@ func directoryControl(t *testing.T, target, output, imports, consumer string) {
 	if !reflect.DeepEqual(names, want) {
 		t.Fatal("system-linked PE imports", names, want)
 	}
+}
+
+func linkDirectoryControl(t *testing.T, target, output, imports, consumer string) {
+	t.Helper()
+	machine := "X64"
+	if strings.HasPrefix(target, "aarch64") {
+		machine = "ARM64"
+	}
+	if strings.HasPrefix(target, "i686") {
+		machine = "X86"
+	}
+	command(t, "lld-link", "/dll", "/noentry", "/nodefaultlib", "/machine:"+machine, "/out:"+output, "/export:directory_imported", imports, consumer)
 }
 
 func TestCOFFImportDirectorySystemControl(t *testing.T) {
@@ -73,6 +78,10 @@ func importDirectoryAssembly(target string, groups []directoryFixture) string {
 }
 
 func importDirectoryAssemblyOrder(target string, groups []directoryFixture, order []int) string {
+	return importDirectoryAssemblyTables(target, groups, order, nil)
+}
+
+func importDirectoryAssemblyTables(target string, groups []directoryFixture, order []int, omit []bool) string {
 	var text strings.Builder
 	if strings.HasPrefix(target, "i686") {
 		// These leaf import thunks install no exception handlers.
@@ -85,7 +94,12 @@ func importDirectoryAssemblyOrder(target string, groups []directoryFixture, orde
 		}
 	}
 	for _, i := range order {
-		fmt.Fprintf(&text, ".rva ilt%d\n.long 0,0\n.rva dll%d\n.rva iat%d\n", i, i, i)
+		if i < len(omit) && omit[i] {
+			text.WriteString(".long 0\n")
+		} else {
+			fmt.Fprintf(&text, ".rva ilt%d\n", i)
+		}
+		fmt.Fprintf(&text, ".long 0,0\n.rva dll%d\n.rva iat%d\n", i, i)
 	}
 	text.WriteString(".zero 20\n")
 	word := ".quad 0\n"
@@ -93,13 +107,25 @@ func importDirectoryAssemblyOrder(target string, groups []directoryFixture, orde
 		word = ".long 0\n"
 	}
 	for i, group := range groups {
-		fmt.Fprintf(&text, ".section .idata$4,\"dr\"\n.balign 8\nilt%d:\n.section .idata$5,\"dr\"\n.balign 8\niat%d:\n", i, i)
+		missing := i < len(omit) && omit[i]
+		if !missing {
+			fmt.Fprintf(&text, ".section .idata$4,\"dr\"\n.balign 8\nilt%d:\n", i)
+		}
+		fmt.Fprintf(&text, ".section .idata$5,\"dr\"\n.balign 8\niat%d:\n", i)
 		for j, entry := range group.entries {
 			hint := fmt.Sprintf("hint%d_%d", i, j)
 			body := strings.NewReplacer(".rva hint\n", ".rva "+hint+"\n", "hint:\n", hint+":\n", ".rva dll_head\n", "").Replace(longImportAssembly(target, entry))
+			if missing {
+				start := strings.Index(body, ".section .idata$4,")
+				end := strings.Index(body, ".section .idata$5,")
+				body = body[:start] + body[end:]
+			}
 			text.WriteString(body)
 		}
-		text.WriteString(".section .idata$4,\"dr\"\n" + word + ".section .idata$5,\"dr\"\n" + word)
+		if !missing {
+			text.WriteString(".section .idata$4,\"dr\"\n" + word)
+		}
+		text.WriteString(".section .idata$5,\"dr\"\n" + word)
 		fmt.Fprintf(&text, ".section .idata$7,\"dr\"\ndll%d:\n.asciz %q\n", i, group.dll)
 	}
 	return text.String()
@@ -185,6 +211,11 @@ func TestCOFFImportDirectory(t *testing.T) {
 }
 
 func TestNativeCOFFImportDirectory(t *testing.T) {
+	testNativeCOFFImportDirectory(t, nil)
+}
+
+func testNativeCOFFImportDirectory(t *testing.T, omit []bool) {
+	t.Helper()
 	if runtime.GOOS != "windows" {
 		t.Skip("native DLL imports require Windows")
 	}
@@ -209,7 +240,7 @@ func TestNativeCOFFImportDirectory(t *testing.T) {
 	}
 	command(t, "lld-link", "/dll", "/noentry", "/nodefaultlib", "/def:"+definition, "/out:"+filepath.Join(dir, "second.dll"), secondaryObject)
 	target := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH] + "-w64-windows-gnu"
-	imports, _ := coffAssembly(t, target, importDirectoryAssemblyOrder(target, directoryGroups(), []int{1, 0}))
+	imports, _ := coffAssembly(t, target, importDirectoryAssemblyTables(target, directoryGroups(), []int{1, 0}, omit))
 	obj := filepath.Join(dir, "directory.obj")
 	if err := os.WriteFile(obj, imports, 0600); err != nil {
 		t.Fatal(err)
@@ -225,7 +256,12 @@ func TestNativeCOFFImportDirectory(t *testing.T) {
 	for _, opt := range []string{"-O0", "-O2"} {
 		consumer := compile(t, source, source+opt+".obj", "--target="+target, opt)
 		control := filepath.Join(dir, "control"+opt+".dll")
-		directoryControl(t, target, control, obj, consumer)
+		if len(omit) == 0 {
+			directoryControl(t, target, control, obj, consumer)
+		} else {
+			linkDirectoryControl(t, target, control, obj, consumer)
+			checkDirectoryLookupRVAs(t, control, []bool{omit[1], omit[0]})
+		}
 		for _, kind := range []string{"object", "archive", "system_library"} {
 			t.Run(opt+"/"+kind, func(t *testing.T) {
 				s := New(Options{})

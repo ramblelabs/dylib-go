@@ -73,14 +73,24 @@ ARM64EC hybrid imports, delay-load tables, and linker directives for automatic d
 
 A raw object can instead contain a complete bounded `IMAGE_IMPORT_DESCRIPTOR`
 array in `.idata$2`. Each descriptor explicitly identifies a DLL name and its
-terminated `.idata$4` lookup / `.idata$5` address subtable. Multiple descriptors
+terminated `.idata$5` address subtable and an optional `.idata$4` lookup subtable.
+Multiple descriptors
 may identify different DLLs exporting identical names. RVA references determine
 that association; the decoder does not infer it from table or symbol order.
 The directory ends with a null descriptor, and each nonempty subtable ends with
 a null pointer. Pointer-aligned zero padding between subtables is allowed.
 
-The Go decoder validates matching IAT/ILT bytes and name references, nonoverlap,
-16-bit nonzero ordinals, complete relative-address fields and bounded native
+When `OriginalFirstThunk` is zero and has no relocation, the unbound IAT supplies
+the lookup entries. Each descriptor may independently include or omit its ILT;
+the entire `.idata$4` section may be absent. A nonzero or relocated lookup field
+must still reference a valid ILT. A malformed reference never selects the IAT
+fallback. The timestamp and forwarder fields must remain zero; prebound native
+addresses and delay-import state are rejected. The
+[PE specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#import-directory-table)
+describes the matching lookup/address contents before binding.
+
+The Go decoder validates matching IAT/ILT bytes and name references when both
+tables exist, nonoverlap, 16-bit nonzero ordinals, complete relative-address fields and bounded native
 names. Each imported row needs one public `__imp_` identity. Named rows refer
 to hint/name entries in `.idata$6`; DLL names reside in `.idata$6` or `.idata$7`.
 An optional `.text` contains only the existing exact tail-jump templates, matched
@@ -97,20 +107,31 @@ metadata and groups touching import metadata prevent conversion. Other
 unsupported features keep their original diagnostics.
 
 This form requires one section per supported table name and self-contained
-metadata references. Public descriptor/name helpers, missing ILTs, separate null
+metadata references. Public descriptor/name helpers, separate null
 descriptor sections, bound imports, delay imports, repeated IAT sections,
 auto-import/pseudo-relocations and arbitrary inline code remain unqualified.
 Complete DLLs continue to use the OS loader for those native table layouts.
 
 Compiler-produced AMD64/ARM64/i386 objects and rejection cases run on all
 native CI hosts. Optional cross-target LLD controls link the original inputs
-into complete PE DLLs and inspect their imports with Go's `debug/pe`. Windows
+into complete PE DLLs and inspect their imports. Ordinary ILT controls use Go's
+`debug/pe`; IAT-only controls use LLVM's independent `llvm-readobj` reader because
+`debug/pe.ImportedSymbols` stops at a zero `OriginalFirstThunk`. The controls also
+check that the linker preserved each descriptor's ILT presence. Windows
 Go/llgo tests additionally execute those DLLs through the OS loader, alongside
 raw-object/archive calls. Distinct providers exporting identical names verify
 DLL-specific function/data/ordinal selection. Mixed tests cover ordinary and
 COMDAT code, retained/discarded initialization/finalization, missing-dependency
 retry, staged snapshots and an unused missing-DLL archive member. Go qualifies
 i386; native llgo qualifies AMD64/ARM64.
+
+IAT lookup tests cover omitted and mixed-present ILTs, reversed descriptor order,
+same-name exports from distinct DLLs, names/ordinals/data/const aliases, empty
+optional lookup sections and mixed ordinary/COMDAT members. Native Windows
+object/archive and OS-library controls run at `-O0`/`-O2`; mixed members retain
+dependency retry, lazy unused imports and lifecycle selection. Bound pointers,
+nonzero or malformed lookup references, overlapping subtables, missing terminators
+and unclaimed metadata bytes/fixups are rejected without changing staged input.
 
 ## Weak externals
 
