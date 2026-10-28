@@ -100,11 +100,41 @@ func TestGenerateLimitsAndInvalidDescriptions(t *testing.T) {
 	if _, err := Generate(strings.Repeat("x", 4097), scalarHeader(), []Function{{Name: "add", Symbol: "bridge"}}); err == nil {
 		t.Fatal("header limit ignored")
 	}
+}
+
+func TestBindingFunctionPointerSnapshots(t *testing.T) {
 	h := scalarHeader()
-	h.Functions[0].Signature.Args = []abi.Type{abi.Pointer}
-	h.Functions[0].FunctionPointers = []clang.FunctionPointer{{Position: 0, Signature: abi.Signature{Result: abi.I32}}}
-	if _, err := Generate("native.h", h, []Function{{Name: "add", Symbol: "bridge"}}); err == nil || !strings.Contains(err.Error(), "function-pointer") {
-		t.Fatal("function-pointer boundary needs a separate adapter", err)
+	h.Functions[0].Signature = abi.Signature{Result: abi.Pointer, Args: []abi.Type{abi.Pointer}}
+	leaf := clang.FunctionPointer{Position: -1, Signature: abi.Signature{Result: abi.I32, Args: []abi.Type{abi.I32}}}
+	h.Functions[0].FunctionPointers = []clang.FunctionPointer{
+		{Position: 0, Signature: abi.Signature{Result: abi.Pointer}, FunctionPointers: []clang.FunctionPointer{leaf}},
+		{Position: -1, Indirection: 2, Signature: leaf.Signature},
+	}
+	f, err := Generate("native.h", h, []Function{{Name: "add", Symbol: "bridge"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := f.Functions[0]
+	p, err := b.LookupFunctionPointer(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.FunctionPointers[0].Signature.Args[0] = abi.F64
+	h.Functions[0].FunctionPointers[0].FunctionPointers[0].Signature.Args[0] = abi.U64
+	again, err := b.LookupFunctionPointer(0)
+	if err != nil || again.FunctionPointers[0].Signature.Args[0] != abi.I32 {
+		t.Fatal("borrowed recursive prototype metadata", again, err)
+	}
+	result, err := b.LookupFunctionPointer(-1)
+	if err != nil || result.Indirection != 2 || result.Signature.Result != abi.I32 {
+		t.Fatal("result indirection", result, err)
+	}
+	if _, err := b.LookupFunctionPointer(1); err == nil {
+		t.Fatal("missing function-pointer position accepted")
+	}
+	h.Functions[0].FunctionPointers[1].Position = 0
+	if _, err := Generate("native.h", h, []Function{{Name: "add", Symbol: "bridge"}}); err == nil {
+		t.Fatal("duplicate prototype metadata accepted")
 	}
 }
 
