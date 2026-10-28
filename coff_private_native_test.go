@@ -40,7 +40,14 @@ func privateCOFFLibrary(t *testing.T, target string, paths []string) string {
 }
 
 func TestCOFFPrivateCOMDATLinkedControls(t *testing.T) {
-	command(t, "llvm-readobj", "--version")
+	for _, tool := range []string{"lld-link", "llvm-readobj"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			if runtime.GOOS == "windows" && os.Getenv("DYLIB_TEST_REQUIRE_NATIVE") == "1" {
+				t.Fatalf("native Windows PE controls require %s: %v", tool, err)
+			}
+			t.Skip("optional cross-target PE controls; native Windows tests require LLVM tools")
+		}
+	}
 	for _, arch := range []string{"x86_64", "aarch64", "i686"} {
 		for _, dialect := range []string{"w64-windows-gnu", "pc-windows-msvc"} {
 			for _, optimization := range []string{"-O0", "-O2"} {
