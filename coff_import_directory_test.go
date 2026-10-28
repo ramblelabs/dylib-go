@@ -82,6 +82,10 @@ func importDirectoryAssemblyOrder(target string, groups []directoryFixture, orde
 }
 
 func importDirectoryAssemblyTables(target string, groups []directoryFixture, order []int, omit []bool) string {
+	return importDirectoryAssemblyLayout(target, groups, order, omit, false)
+}
+
+func importDirectoryAssemblyLayout(target string, groups []directoryFixture, order []int, omit []bool, repeated bool) string {
 	var text strings.Builder
 	if strings.HasPrefix(target, "i686") {
 		// These leaf import thunks install no exception handlers.
@@ -107,11 +111,12 @@ func importDirectoryAssemblyTables(target string, groups []directoryFixture, ord
 		word = ".long 0\n"
 	}
 	for i, group := range groups {
+		var part strings.Builder
 		missing := i < len(omit) && omit[i]
 		if !missing {
-			fmt.Fprintf(&text, ".section .idata$4,\"dr\"\n.balign 8\nilt%d:\n", i)
+			fmt.Fprintf(&part, ".section .idata$4,\"dr\"\n.balign 8\nilt%d:\n", i)
 		}
-		fmt.Fprintf(&text, ".section .idata$5,\"dr\"\n.balign 8\niat%d:\n", i)
+		fmt.Fprintf(&part, ".section .idata$5,\"dr\"\n.balign 8\niat%d:\n", i)
 		for j, entry := range group.entries {
 			hint := fmt.Sprintf("hint%d_%d", i, j)
 			body := strings.NewReplacer(".rva hint\n", ".rva "+hint+"\n", "hint:\n", hint+":\n", ".rva dll_head\n", "").Replace(longImportAssembly(target, entry))
@@ -120,13 +125,22 @@ func importDirectoryAssemblyTables(target string, groups []directoryFixture, ord
 				end := strings.Index(body, ".section .idata$5,")
 				body = body[:start] + body[end:]
 			}
-			text.WriteString(body)
+			part.WriteString(body)
 		}
 		if !missing {
-			text.WriteString(".section .idata$4,\"dr\"\n" + word)
+			part.WriteString(".section .idata$4,\"dr\"\n" + word)
 		}
-		text.WriteString(".section .idata$5,\"dr\"\n" + word)
-		fmt.Fprintf(&text, ".section .idata$7,\"dr\"\ndll%d:\n.asciz %q\n", i, group.dll)
+		part.WriteString(".section .idata$5,\"dr\"\n" + word)
+		fmt.Fprintf(&part, ".section .idata$7,\"dr\"\ndll%d:\n.asciz %q\n", i, group.dll)
+		body := part.String()
+		if repeated {
+			// COFF unique IDs produce distinct ordinary sections with the same
+			// name. Keep each DLL's tables and hint/name strings in its own set.
+			for _, name := range []string{".idata$4", ".idata$5", ".idata$6", ".idata$7"} {
+				body = strings.ReplaceAll(body, fmt.Sprintf(".section %s,\"dr\"\n", name), fmt.Sprintf(".section %s,\"dr\",unique,%d\n", name, i+1))
+			}
+		}
+		text.WriteString(body)
 	}
 	return text.String()
 }
@@ -211,10 +225,10 @@ func TestCOFFImportDirectory(t *testing.T) {
 }
 
 func TestNativeCOFFImportDirectory(t *testing.T) {
-	testNativeCOFFImportDirectory(t, nil)
+	testNativeCOFFImportDirectory(t, nil, false)
 }
 
-func testNativeCOFFImportDirectory(t *testing.T, omit []bool) {
+func testNativeCOFFImportDirectory(t *testing.T, omit []bool, repeated bool) {
 	t.Helper()
 	if runtime.GOOS != "windows" {
 		t.Skip("native DLL imports require Windows")
@@ -240,7 +254,7 @@ func testNativeCOFFImportDirectory(t *testing.T, omit []bool) {
 	}
 	command(t, "lld-link", "/dll", "/noentry", "/nodefaultlib", "/def:"+definition, "/out:"+filepath.Join(dir, "second.dll"), secondaryObject)
 	target := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH] + "-w64-windows-gnu"
-	imports, _ := coffAssembly(t, target, importDirectoryAssemblyTables(target, directoryGroups(), []int{1, 0}, omit))
+	imports, _ := coffAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), []int{1, 0}, omit, repeated))
 	obj := filepath.Join(dir, "directory.obj")
 	if err := os.WriteFile(obj, imports, 0600); err != nil {
 		t.Fatal(err)

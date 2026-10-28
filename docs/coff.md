@@ -106,9 +106,16 @@ references into removed private helpers are rejected. Unknown fixups, executable
 metadata and groups touching import metadata prevent conversion. Other
 unsupported features keep their original diagnostics.
 
-This form requires one section per supported table name and self-contained
-metadata references. Public descriptor/name helpers, separate null
-descriptor sections, bound imports, delay imports, repeated IAT sections,
+Repeated ordinary `.idata$4`, `.idata$5`, `.idata$6` and `.idata$7` sections
+are supported. A row is identified by its section index and offset, so identical
+offsets in different DLL tables remain distinct. Descriptors and thunk
+relocations select the exact section; section names or physical ordering never
+select a provider. Every lookup/address section is checked for unused nonzero
+bytes and fixups, including sections not referenced by a descriptor.
+
+This form requires a single `.idata$2` directory, at most one import `.text`
+section and self-contained metadata references. Public descriptor/name helpers,
+separate null descriptor sections, bound imports, delay imports,
 auto-import/pseudo-relocations and arbitrary inline code remain unqualified.
 Complete DLLs continue to use the OS loader for those native table layouts.
 
@@ -191,3 +198,10 @@ stack probes, including eagerly parsed, unselected private-COMDAT members.
 Large fixtures are genuine Clang output with 33000 and 65540 padding sections, testing ordinary unsigned indexes, bigobj, high associative parents, weak fallback indexes, and archive parsing. Windows native tests call functions from high-section bigobj objects/archives and verify the last of 65536 relocated data pointers. Separate malformed-input tests cover header/UUID/version, sizes and offsets, auxiliary counts, and overflow markers.
 
 Import tests cover all name policies and CODE/DATA/CONST metadata on every host. Windows jobs build a real DLL and `.lib` with Clang/LLD, execute imported functions/data, and test ordinal lookup, export aliases, explicit DLL reuse, moved-library search paths, unused missing DLLs, failed links, and retry. Go and llgo use the same runtime tests; Windows 386 runs Go.
+
+Repeated-section tests use Clang's COFF unique section IDs for two independent
+DLLs, with each table starting at offset zero. Six MSVC/GNU targets cover all
+ILT-presence combinations, reversed descriptors, retained ordinary/COMDAT code
+and malformed later sections. LLD/PE controls and native Windows object/archive/
+DLL calls qualify function/data/ordinal identity; mixed members also cover lazy
+unused imports, failed-link retry and lifecycle selection.

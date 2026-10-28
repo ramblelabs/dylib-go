@@ -7,7 +7,8 @@ import (
 )
 
 // A self-contained IMAGE_IMPORT_DESCRIPTOR directory identifies each DLL's
-// terminated IAT/ILT explicitly. Table order alone never associates two DLLs.
+// terminated IAT/ILT explicitly. Repeated metadata sections retain their section
+// identity: table offsets or section names alone never associate two DLLs.
 // This decoder handles metadata, not the PE loader's bound/delay-import state.
 type coffImportDirectory struct {
 	graph    coffImportGraph
@@ -17,7 +18,7 @@ type coffImportDirectory struct {
 	sites    map[coffImportSite]relocation
 	used     map[coffImportSite]bool
 	occupied map[coffImportSite]bool
-	rows     map[uint64]*coffDirectoryEntry
+	rows     map[coffImportSite]*coffDirectoryEntry
 	entries  []*coffDirectoryEntry
 	width    uint64
 	budget   int
@@ -27,13 +28,14 @@ type coffDirectoryEntry struct {
 	imported coffImport
 	info     ImportInfo
 	symbols  []symbol
+	iat      int
 	thunk    *uint64
 }
 
 func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 	d := coffImportDirectory{graph: g, o: o, width: uint64(o.info.Bits / 8), budget: maxFile,
 		indexes: make(map[string]int), template: make(map[int]bool), sites: make(map[coffImportSite]relocation),
-		used: make(map[coffImportSite]bool), occupied: make(map[coffImportSite]bool), rows: make(map[uint64]*coffDirectoryEntry)}
+		used: make(map[coffImportSite]bool), occupied: make(map[coffImportSite]bool), rows: make(map[coffImportSite]*coffDirectoryEntry)}
 	if o.info.Format != "COFF" || d.width != 4 && d.width != 8 {
 		return nil, false
 	}
@@ -43,10 +45,16 @@ func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 		}
 		switch sec.name {
 		case ".text", ".idata$2", ".idata$4", ".idata$5", ".idata$6", ".idata$7":
-			if d.indexes[sec.name] != 0 || uint64(len(sec.data)) != sec.size || sec.lifecycle != 0 || sec.nativeTLS != 0 || sec.exec && sec.name != ".text" {
+			if (sec.name == ".text" || sec.name == ".idata$2") && d.indexes[sec.name] != 0 {
 				return nil, false
 			}
-			d.indexes[sec.name], d.template[i] = i, true
+			if uint64(len(sec.data)) != sec.size || sec.lifecycle != 0 || sec.nativeTLS != 0 || sec.exec && sec.name != ".text" {
+				return nil, false
+			}
+			if d.indexes[sec.name] == 0 {
+				d.indexes[sec.name] = i
+			}
+			d.template[i] = true
 		default:
 			if strings.HasPrefix(sec.name, ".idata") {
 				return nil, false
@@ -84,9 +92,8 @@ func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 			return nil, false
 		}
 	}
-	for _, name := range []string{".idata$4", ".idata$5"} {
-		index := d.indexes[name]
-		if index == 0 {
+	for index := range d.template {
+		if !d.section(index, ".idata$4") && !d.section(index, ".idata$5") {
 			continue
 		}
 		sec := o.sections[index]
@@ -111,6 +118,10 @@ func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 		}
 	}
 	return overlayCOFFImports(o, d.template, converted)
+}
+
+func (d *coffImportDirectory) section(index int, name string) bool {
+	return d.template[index] && d.o.sections[index].name == name
 }
 
 func (d *coffImportDirectory) reference(section int, offset uint64) (coffLocation, bool) {
@@ -155,7 +166,7 @@ func (d *coffImportDirectory) directory() bool {
 		}
 		iat, yes := d.reference(index, offset+16)
 		name, named := d.reference(index, offset+12)
-		if !yes || !named || iat.section != d.indexes[".idata$5"] {
+		if !yes || !named || !d.section(iat.section, ".idata$5") {
 			return false
 		}
 		// An unbound IAT contains the lookup entries when OriginalFirstThunk
@@ -165,7 +176,7 @@ func (d *coffImportDirectory) directory() bool {
 		if lookupRelocation || !allZero(bytes[:4]) {
 			var ok bool
 			ilt, ok = d.reference(index, offset)
-			if !ok || ilt.section != d.indexes[".idata$4"] {
+			if !ok || !d.section(ilt.section, ".idata$4") {
 				return false
 			}
 		}
@@ -213,7 +224,7 @@ func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string) bool {
 		if len(d.entries) >= len(d.o.symbols) || len(d.entries) >= 65536 {
 			return false
 		}
-		entry := &coffDirectoryEntry{imported: coffImport{dll: dll}, info: ImportInfo{DLL: dll, Kind: "data"}}
+		entry := &coffDirectoryEntry{iat: iat.section, imported: coffImport{dll: dll}, info: ImportInfo{DLL: dll, Kind: "data"}}
 		word := uint64(le.Uint32(left))
 		if d.width == 8 {
 			word = le.Uint64(left)
@@ -233,7 +244,7 @@ func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string) bool {
 			if x != y {
 				second, yes = d.reference(iat.section, iat.offset)
 			}
-			if !ok || !yes || first != second || first.section != d.indexes[".idata$6"] {
+			if !ok || !yes || first != second || !d.section(first.section, ".idata$6") {
 				return false
 			}
 			name, ok := first.name(2)
@@ -247,7 +258,7 @@ func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string) bool {
 			return false
 		}
 		d.budget -= cost
-		d.rows[iat.offset] = entry
+		d.rows[y] = entry
 		d.entries = append(d.entries, entry)
 		ilt.offset += d.width
 		iat.offset += d.width
@@ -265,8 +276,8 @@ func (d *coffImportDirectory) symbols() bool {
 			return false
 		}
 		names[s.name] = true
-		if s.section == d.indexes[".idata$5"] {
-			row := d.rows[s.value]
+		if d.section(s.section, ".idata$5") {
+			row := d.rows[coffImportSite{s.section, s.value}]
 			if row == nil {
 				return false
 			}
@@ -293,8 +304,8 @@ func (d *coffImportDirectory) symbols() bool {
 		if !s.global || !d.template[s.section] {
 			continue
 		}
-		row := d.rows[s.value]
-		indirect := s.section == d.indexes[".idata$5"]
+		row := d.rows[coffImportSite{s.section, s.value}]
+		indirect := d.section(s.section, ".idata$5")
 		if !indirect {
 			row = public[s.name]
 			if row == nil || row.thunk != nil {
@@ -311,7 +322,7 @@ func (d *coffImportDirectory) symbols() bool {
 }
 
 func (d *coffImportDirectory) thunks() bool {
-	text, iat := d.indexes[".text"], d.indexes[".idata$5"]
+	text := d.indexes[".text"]
 	var rows []*coffDirectoryEntry
 	for _, row := range d.entries {
 		if row.thunk != nil {
@@ -336,7 +347,7 @@ func (d *coffImportDirectory) thunks() bool {
 		}
 		row := rows[index]
 		s := d.o.symbols[r.symbol]
-		if s.section != iat || d.rows[s.value] != row {
+		if s.section != row.iat || d.rows[coffImportSite{s.section, s.value}] != row {
 			return false
 		}
 		r.section, r.offset, r.symbol = 1, r.offset-*row.thunk, 0
@@ -351,7 +362,7 @@ func (d *coffImportDirectory) thunks() bool {
 		if end <= start || end > d.o.sections[text].size {
 			return false
 		}
-		mini := &object{info: d.o.info, sections: []*section{nil, coffImportSection(d.o.sections[text], start, end-start), d.o.sections[iat]}, symbols: []symbol{{section: 2}}}
+		mini := &object{info: d.o.info, sections: []*section{nil, coffImportSection(d.o.sections[text], start, end-start), d.o.sections[row.iat]}, symbols: []symbol{{section: 2}}}
 		mini.relocs = fixups[i]
 		if !d.graph.validLongTables(mini, map[string]int{".text": 1, ".idata$5": 2}, &row.imported) {
 			return false
