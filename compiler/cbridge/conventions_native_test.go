@@ -5,6 +5,7 @@ package cbridge_test
 import (
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	dylib "github.com/ramblelabs/dylib-go"
@@ -29,18 +30,23 @@ func testNativeConventions(t *testing.T, parser, compiler string) {
 		for _, packing := range []string{"default", "packed"} {
 			t.Run(variant+"/"+packing, func(t *testing.T) {
 				extra := []string{}
+				target := ""
 				if variant != "host" {
 					triple := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH]
 					suffix := "-w64-windows-gnu"
 					if variant == "msvc" {
 						suffix = "-pc-windows-msvc"
 					}
-					extra = append(extra, "--target="+triple+suffix)
+					target = triple + suffix
+					extra = append(extra, "--target="+target)
 				}
 				if packing == "packed" {
 					extra = append(extra, "-fpack-struct=1")
 				}
-				h, f := conventionModel(t, parser, "", append(flags(), extra...)...)
+				h, f := conventionModel(t, parser, target, append(flags(), extra...)...)
+				if target != "" && !strings.HasPrefix(h.Target.Triple, target) {
+					t.Fatalf("parser target %s; producer target %s", h.Target.Triple, target)
+				}
 				checkConventionMetadata(t, h, f)
 				testNativeFacade(t, compiler, h, f, "testdata/conventions.c", checkConventionCalls, extra...)
 			})

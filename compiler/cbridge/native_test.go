@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	dylib "github.com/ramblelabs/dylib-go"
@@ -160,7 +161,23 @@ func testNativeFacadeOptimizations(t *testing.T, compiler string, h *clang.Heade
 			}
 			link = append(link, flags()...)
 			link = append(link, objects...)
-			compile(t, compiler, append(link, "-o", library)...)
+			if runtime.GOOS == "windows" && strings.Contains(h.Target.Triple, "-windows-msvc") {
+				// MSVC i386 /EXPORT directives contain decorated names. A GNU
+				// driver adds another underscore; use the producer's linker mode.
+				// Build only import metadata for the C operations emitted by this
+				// freestanding facade; the system msvcrt.dll supplies their code.
+				definition, imports := filepath.Join(dir, "crt.def"), filepath.Join(dir, "crt.lib")
+				if err := os.WriteFile(definition, []byte("LIBRARY msvcrt.dll\nEXPORTS\nmemcpy\nmemmove\nmemset\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				linker := tool(t, "lld-link")
+				machine := map[string]string{"amd64": "X64", "arm64": "ARM64", "386": "X86"}[runtime.GOARCH]
+				compile(t, linker, "/dll", "/noentry", "/nodefaultlib", "/machine:"+machine, "/def:"+definition, "/implib:"+imports, "/out:"+filepath.Join(dir, "unused.dll"))
+				args := append([]string{"/dll", "/noentry", "/nodefaultlib", "/out:" + library}, objects...)
+				compile(t, linker, append(args, imports)...)
+			} else {
+				compile(t, compiler, append(link, "-o", library)...)
+			}
 			for _, input := range []struct {
 				name  string
 				paths []string

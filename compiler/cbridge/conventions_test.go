@@ -139,6 +139,22 @@ func TestHeaderBridgeCallingConventionTargets(t *testing.T) {
 							t.Fatalf("missing original native call %s", cc.ir)
 						}
 					}
+					cppArgs := append([]string{"--target=" + target, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-fsyntax-only", "-x", "c++"}, flags...)
+					if out, err := exec.Command(compiler, append(cppArgs, header)...).CombinedOutput(); err != nil {
+						t.Fatalf("C++ carrier header: %v\n%s", err, out)
+					}
+					// The carrier layout must not depend on original-header packing.
+					// Compare independent compiler dumps, including MSVC's global
+					// packing override, before any host can execute the facade.
+					layoutArgs := []string{"--target=" + target, "-std=c17", "-ffreestanding", "-Xclang", "-fdump-record-layouts-complete", "-fsyntax-only", "-x", "c", header}
+					ordinary, err := exec.Command(compiler, layoutArgs...).CombinedOutput()
+					if err != nil {
+						t.Fatalf("ordinary carrier layout: %v\n%s", err, ordinary)
+					}
+					packed, err := exec.Command(compiler, append(layoutArgs, "-fpack-struct=1")...).CombinedOutput()
+					if err != nil || len(conventionCarrierLayouts(ordinary)) == 0 || !bytes.Equal(conventionCarrierLayouts(ordinary), conventionCarrierLayouts(packed)) {
+						t.Fatalf("packing changed the carrier layout: %v\nordinary:\n%s\npacked:\n%s", err, ordinary, packed)
+					}
 					exports := make([]string, len(f.Functions))
 					for i, binding := range f.Functions {
 						exports[i] = binding.Symbol
@@ -164,4 +180,14 @@ func TestHeaderBridgeCallingConventionTargets(t *testing.T) {
 			}
 		})
 	}
+}
+
+func conventionCarrierLayouts(dump []byte) []byte {
+	var carrier []byte
+	for _, record := range bytes.Split(dump, []byte("*** Dumping AST Record Layout")) {
+		if bytes.Contains(record, []byte("| struct dylib_cbridge_")) {
+			carrier = append(carrier, bytes.TrimSpace(record)...)
+		}
+	}
+	return carrier
 }

@@ -94,7 +94,7 @@ native entries using those records stay inside the original-header facade.
 | Native record ABI | Unnamed nonzero/zero-width bitfields, empty argument lanes, floating prefix/tail gaps, packed/aligned records, large results, exhausted registers and concrete variadic values |
 | Native entries | Record-valued entry parameters/results, higher-order factories, multi-level pointer slots, null entries accepted by the original API and native variadic entry calls; leased scalar Go callbacks additionally with libffi |
 | Calling conventions | Fixed cdecl, explicit Microsoft x64/System V AMD64, Windows i386 stdcall/fastcall/thiscall and Windows amd64/i386 vectorcall; original record-valued native entries retain the same convention |
-| Compiler packing | Ordinary defaults and `-fpack-struct=1`; natural carriers explicitly restore their own packing scope |
+| Compiler packing | Ordinary defaults and `-fpack-struct=1`; natural carriers restore their packing scope and explicitly align members, including MSVC global packing |
 | Safety | Corrupted layout headers/sizes/alignments/offsets, invoker/native status failures, concurrent queries and retired facade images |
 
 Native C control callers are compiled from the original prototypes with the
