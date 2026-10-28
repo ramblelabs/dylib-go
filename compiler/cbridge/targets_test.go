@@ -37,7 +37,7 @@ func TestHeaderBridgeAcrossTargets(t *testing.T) {
 	for _, target := range []string{"x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "i686-unknown-linux-gnu", "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc", "i686-pc-windows-msvc", "x86_64-apple-macosx11", "arm64-apple-macosx11"} {
 		t.Run(target, func(t *testing.T) {
 			names := []string{"sum", "float_gap", "empty_lane", "float_tail", "packed_bits", "large", "envelope", "exhausted"}
-			h, err := clang.Parse(context.Background(), header, clang.Options{Compiler: compiler, Target: target, Functions: names, NominalRecords: true})
+			h, err := clang.Parse(context.Background(), header, clang.Options{Compiler: compiler, Target: target, Functions: names, NominalRecords: true, Flags: []string{"-ffreestanding"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -64,7 +64,7 @@ func TestHeaderBridgeAcrossTargets(t *testing.T) {
 			}
 			// Consumers parse only the standalone primitive pointer interface, with no
 			// dependency on or reconstruction of the original record declarations.
-			consumer, err := clang.Parse(context.Background(), path, clang.Options{Compiler: compiler, Target: target, Functions: exports})
+			consumer, err := clang.Parse(context.Background(), path, clang.Options{Compiler: compiler, Target: target, Functions: exports, Flags: []string{"-ffreestanding"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -108,7 +108,7 @@ func TestHeaderBridgeNativeCompilerRejectsConstInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	output, err := exec.Command(compiler, "-std=c17", "-fsyntax-only", source).CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "const") {
+	if err == nil || !strings.Contains(string(output), "const-qualified") {
 		t.Fatalf("const input was not rejected: %v\n%s", err, output)
 	}
 }
