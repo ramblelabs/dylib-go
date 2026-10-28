@@ -2,8 +2,8 @@
 
 `compiler/cbridge` generates a separately compiled C facade for records whose
 calling ABI cannot safely be reconstructed in Go or llgo. The facade includes
-the original header and copies fields between ordinary transport storage and
-the producer's actual C types. Its call uses `__typeof__(&original_function)`,
+the original header and initializes the producer's actual C types from ordinary
+transport storage, then copies result fields back. Its call uses `__typeof__(&original_function)`,
 so the native compiler supplies the original parameter/result lowering, hidden
 result pointers and concrete variadic promotions.
 
@@ -81,7 +81,7 @@ Native callees must not retain the facade's temporary input/output storage.
 | Host execution | Go: Linux/Windows amd64, arm64 and 386; macOS amd64 and arm64. llgo: the six 64-bit hosts |
 | Inputs | Separate objects, archives and complete shared libraries; `-O0` and `-O2` |
 | Producers | Native Clang on every host; native GCC additionally on Linux and macOS |
-| Values | All supported fixed-width integers, Boolean, float/double, native pointers, nested records and multidimensional fixed arrays |
+| Values | All supported fixed-width integers, Boolean, float/double, native pointers, nested records and multidimensional fixed arrays; const scalar/record/array/bitfield/pointer subobjects use native C17 initialization |
 | Native record ABI | Unnamed nonzero/zero-width bitfields, empty argument lanes, floating prefix/tail gaps, packed/aligned records, large results, exhausted registers and concrete variadic values |
 | Compiler packing | Ordinary defaults and `-fpack-struct=1`; natural carriers explicitly restore their own packing scope |
 | Safety | Corrupted layout headers/sizes/alignments/offsets, invoker/native status failures, concurrent queries and retired facade images |
@@ -90,7 +90,17 @@ Native C control callers are compiled from the original prototypes with the
 same producer. The compiler tests separately inspect all eight target triples;
 cross-target compilation supplements native execution.
 
-Input fields must be assignable; a native compiler rejects const subobjects.
+Arguments use designated initialization, including const subobjects and native
+callback-pointer fields. Array initializers use private element/block macros that
+explicitly capture outer array indices and are undefined after each argument.
+This keeps a 64 KiB byte array within the existing generated-source bound;
+the original ABI storage and descriptor limits still apply. Native tests check
+const nested values, variadic records, exhausted registers and array block tails
+at `-O0`/`-O2`, plus the full 64 KiB array at `-O0`, through Clang/GCC objects,
+archives and shared libraries. Large Windows
+array fixtures disable compiler stack-argument probes; those tests qualify the
+initializer and storage bound separately from CRT-specific stack-probe helpers.
+
 Function-pointer parameters/results need a separate adapter; native pointer
 fields are supported. The original Clang parser's limits still apply, including
 unions without an explicit view, flexible arrays and unsupported scalar types.

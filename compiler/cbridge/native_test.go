@@ -52,7 +52,7 @@ func compile(t *testing.T, compiler string, args ...string) {
 	}
 }
 
-var names = []string{"sum", "native_control", "scalars", "notify", "pointer", "datum", "callback", "float_gap", "empty_lane", "float_tail", "packed_bits", "large", "envelope", "variable", "record_tail", "exhausted"}
+var names = []string{"sum", "native_control", "scalars", "notify", "pointer", "datum", "callback", "float_gap", "empty_lane", "float_tail", "packed_bits", "large", "envelope", "variable", "record_tail", "exhausted", "const_pair", "const_packet", "const_tail", "const_stack", "const_blocks"}
 
 func model(t *testing.T, compiler string, extra ...string) (*clang.Header, *cbridge.Facade) {
 	t.Helper()
@@ -69,8 +69,12 @@ func model(t *testing.T, compiler string, extra ...string) (*clang.Header, *cbri
 		switch d.Name {
 		case "variable":
 			h.Functions[i], err = d.WithTail(abi.I8, abi.F32)
-		case "record_tail":
-			record, lookupErr := h.LookupRecord("FloatGap")
+		case "record_tail", "const_tail":
+			name := "FloatGap"
+			if d.Name == "const_tail" {
+				name = "ConstPair"
+			}
+			record, lookupErr := h.LookupRecord(name)
 			if lookupErr != nil {
 				t.Fatal(lookupErr)
 			}
@@ -110,7 +114,17 @@ func TestNativeHeaderGlobalPacking(t *testing.T) {
 func testNativeHeader(t *testing.T, parser, compiler string, extra ...string) {
 	t.Helper()
 	h, f := model(t, parser, extra...)
-	for _, optimization := range []string{"-O0", "-O2"} {
+	testNativeFacade(t, compiler, h, f, "testdata/exports.c", checkCalls, extra...)
+}
+
+func testNativeFacade(t *testing.T, compiler string, h *clang.Header, f *cbridge.Facade, producer string, check func(*testing.T, *dylib.Session, *clang.Header, *cbridge.Facade), extra ...string) {
+	t.Helper()
+	testNativeFacadeOptimizations(t, compiler, h, f, producer, check, []string{"-O0", "-O2"}, extra...)
+}
+
+func testNativeFacadeOptimizations(t *testing.T, compiler string, h *clang.Header, f *cbridge.Facade, producer string, check func(*testing.T, *dylib.Session, *clang.Header, *cbridge.Facade), optimizations []string, extra ...string) {
+	t.Helper()
+	for _, optimization := range optimizations {
 		t.Run(optimization, func(t *testing.T) {
 			dir := t.TempDir()
 			source := filepath.Join(dir, "facade.c")
@@ -118,7 +132,7 @@ func testNativeHeader(t *testing.T, parser, compiler string, extra ...string) {
 				t.Fatal(err)
 			}
 			objects := []string{}
-			for i, path := range []string{"testdata/exports.c", source} {
+			for i, path := range []string{producer, source} {
 				object := filepath.Join(dir, fmt.Sprintf("part%d.o", i))
 				args := append([]string{"-std=c17", "-ffreestanding", "-fno-stack-protector", optimization, "-c"}, flags()...)
 				args = append(args, extra...)
@@ -175,7 +189,7 @@ func testNativeHeader(t *testing.T, parser, compiler string, extra ...string) {
 					if err := s.Link(roots...); err != nil {
 						t.Fatal(err)
 					}
-					checkCalls(t, s, h, f)
+					check(t, s, h, f)
 				})
 			}
 		})
@@ -253,4 +267,76 @@ func checkCalls(t *testing.T, s *dylib.Session, h *clang.Header, f *cbridge.Faca
 	}
 	args = append(args, value(gap, abi.Float32(2)), value(tail, abi.Float64(4)))
 	check("exhausted", call("exhausted", args...), abi.Float64(42))
+	t.Run("const_subobjects", func(t *testing.T) {
+		call := func(name string, args ...abi.Value) abi.Value {
+			t.Helper()
+			value, err := headerbridge.Call(s, bindings[name], args...)
+			if err != nil {
+				t.Fatal(name, err)
+			}
+			return value
+		}
+		checkConstCalls(t, call, h, ptr)
+	})
+}
+
+func checkConstCalls(t *testing.T, call func(string, ...abi.Value) abi.Value, h *clang.Header, pointer abi.Value) {
+	t.Helper()
+	pair, err := h.LookupRecord("ConstPair")
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := h.LookupRecord("ConstPacket")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := abi.Zero(pair.Description)
+	v.Aggregate.Fields[0], v.Aggregate.Fields[1] = abi.Int32(20), abi.Int32(22)
+	want := abi.Zero(pair.Description)
+	want.Aggregate.Fields[0], want.Aggregate.Fields[1] = abi.Int32(21), abi.Int32(24)
+	if got := call("const_pair", v); !reflect.DeepEqual(got, want) {
+		t.Fatal("const pair", got, want)
+	}
+	if got := call("const_tail", abi.Int32(0), v); got != abi.Int32(42) {
+		t.Fatal("const variadic record", got)
+	}
+	x := abi.Zero(packet.Description)
+	x.Aggregate.Fields[0] = abi.Uint32(3)
+	for i := range 2 {
+		p := abi.Zero(pair.Description)
+		p.Aggregate.Fields[0], p.Aggregate.Fields[1] = abi.Int32(int32(1+i*2)), abi.Int32(int32(2+i*2))
+		x.Aggregate.Fields[1].Aggregate.Fields[i] = p
+		for j := range 3 {
+			x.Aggregate.Fields[2].Aggregate.Fields[i].Aggregate.Fields[j] = abi.Int16(int16(1 + i*3 + j))
+		}
+	}
+	x.Aggregate.Fields[3], x.Aggregate.Fields[4] = call("callback"), pointer
+	y := call("const_packet", x)
+	if y.Aggregate.Fields[0] != abi.Uint32(4) || y.Aggregate.Fields[1].Aggregate.Fields[1].Aggregate.Fields[1] != abi.Int32(8) || y.Aggregate.Fields[2].Aggregate.Fields[1].Aggregate.Fields[2] != abi.Int16(12) || y.Aggregate.Fields[3] != x.Aggregate.Fields[3] || y.Aggregate.Fields[4] != pointer {
+		t.Fatal("const nested values and pointers", y)
+	}
+	args := []abi.Value{}
+	for i := 1; i <= 8; i++ {
+		args = append(args, abi.Int32(int32(i)))
+	}
+	args = append(args, x)
+	if got := call("const_stack", args...); got != abi.Int32(50) {
+		t.Fatal("const register exhaustion", got)
+	}
+	blocks, err := h.LookupRecord("ConstBlocks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := abi.Zero(blocks.Description)
+	var sum int32
+	for i := range 2 {
+		for j := range 65 {
+			v := int16(i*100 + j - 50)
+			z.Aggregate.Fields[0].Aggregate.Fields[i].Aggregate.Fields[j] = abi.Int16(v)
+			sum += int32(v)
+		}
+	}
+	if got := call("const_blocks", z); got != abi.Int32(sum) {
+		t.Fatal("nested array block indices/remainder", got, sum)
+	}
 }

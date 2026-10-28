@@ -88,7 +88,7 @@ func TestHeaderBridgeAcrossTargets(t *testing.T) {
 	}
 }
 
-func TestHeaderBridgeNativeCompilerRejectsConstInput(t *testing.T) {
+func TestHeaderBridgeNativeConstInput(t *testing.T) {
 	compiler := clangTool(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "const.h")
@@ -108,7 +108,7 @@ func TestHeaderBridgeNativeCompilerRejectsConstInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	output, err := exec.Command(compiler, "-std=c17", "-fsyntax-only", source).CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "const-qualified") {
-		t.Fatalf("const input was not rejected: %v\n%s", err, output)
+	if err != nil {
+		t.Fatalf("const input initialization failed: %v\n%s", err, output)
 	}
 }

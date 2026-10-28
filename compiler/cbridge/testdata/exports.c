@@ -34,6 +34,24 @@ double exhausted(double a,double b,double c,double d,double e,double f,double g,
     return a+b+c+d+e+f+g+h+x.value+y.value;
 }
 
+ConstPair const_pair(ConstPair x) { return (ConstPair){x.a+1,x.b+2}; }
+ConstPacket const_packet(ConstPacket x) {
+    return (ConstPacket){.flags=(x.flags+1)&31,
+        .pairs={{x.pairs[0].a+1,x.pairs[0].b+2},{x.pairs[1].a+3,x.pairs[1].b+4}},
+        .matrix={{x.matrix[0][0]+1,x.matrix[0][1]+2,x.matrix[0][2]+3},
+                 {x.matrix[1][0]+4,x.matrix[1][1]+5,x.matrix[1][2]+6}},
+        .callback=x.callback,.pointer=x.pointer};
+}
+int32_t const_tail(int32_t marker,...) {
+    va_list a; va_start(a,marker); ConstPair x=va_arg(a,ConstPair); va_end(a); return marker+x.a+x.b;
+}
+int32_t const_stack(int32_t a,int32_t b,int32_t c,int32_t d,int32_t e,int32_t f,int32_t g,int32_t h,ConstPacket x) {
+    return a+b+c+d+e+f+g+h+(x.callback?x.callback(x.pairs[0].a,x.pairs[1].b):0)+x.matrix[1][2]+x.flags;
+}
+int32_t const_blocks(ConstBlocks x) {
+    int32_t sum=0; for(int i=0;i<2;++i) for(int j=0;j<65;++j) sum+=x.values[i][j]; return sum;
+}
+
 /* An independent original-prototype caller compiled with this same producer. */
 int32_t native_control(void) {
     FloatGap a={0}; a.value=20; a=float_gap(a,22);
@@ -43,6 +61,12 @@ int32_t native_control(void) {
     Large l={1,2,3}; l=large(l);
     FloatGap v={0}; v.value=20; v=variable(v,2,20,2.0);
     FloatGap t={0}; t.value=40; t=record_tail(2,t);
+    ConstPair cp={20,22}; ConstPair cq=const_pair(cp);
+    ConstPacket cr={.flags=3,.pairs={{1,2},{3,4}},.matrix={{1,2,3},{4,5,6}},
+        .callback=(int32_t(*)(int32_t,int32_t))callback(),.pointer=datum()};
+    ConstPacket cs=const_packet(cr);
     return a.value==42 && b.value==42 && c.value==42 && p.a==42 && p.flags==4 && p.value==42 &&
-        l.a==2 && l.b==4 && l.c==6 && v.value==42 && t.value==42 ? 42 : 0;
+        l.a==2 && l.b==4 && l.c==6 && v.value==42 && t.value==42 && cq.a==21 && cq.b==24 &&
+        cs.flags==4 && cs.pairs[1].b==8 && cs.matrix[1][2]==12 && cs.callback(20,22)==42 &&
+        cs.pointer==&number && const_tail(0,cp)==42 && const_stack(1,2,3,4,5,6,7,8,cr)==50 ? 42 : 0;
 }

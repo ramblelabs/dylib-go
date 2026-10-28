@@ -67,8 +67,8 @@ type generator struct {
 // function's __typeof__ supplies its native calling convention in CSource.
 // This supports C17 scalar/native-address/record values, nested arrays, bitfields
 // and concrete variadic tails. Function-pointer parameters/results require a
-// separate adapter. Input fields must be assignable; the native compiler rejects
-// const input subobjects. This is not a C++ exception or object-lifetime adapter.
+// separate adapter. Native arguments use C17 initialization, including const
+// subobjects. This is not a C++ exception or object-lifetime adapter.
 // Generation runs no tools and works without cgo. Limits are 256 exports,
 // 64 arguments per export, 64 KiB layout queries and 1 MiB generated source.
 func Generate(header string, declarations *clang.Header, functions []Function) (*Facade, error) {
