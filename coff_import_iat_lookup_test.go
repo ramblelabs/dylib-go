@@ -180,10 +180,10 @@ func TestNativeCOFFImportDirectoryIATLookup(t *testing.T) {
 		t.Skip("native import directories require Windows")
 	}
 	for _, shape := range iatLookupShapes {
-		t.Run(shape.name, func(t *testing.T) { testNativeCOFFImportDirectory(t, shape.omit) })
+		t.Run(shape.name, func(t *testing.T) { testNativeCOFFImportDirectory(t, shape.omit, false) })
 	}
 }
 
 func TestNativeCOFFImportDirectoryIATLookupMixed(t *testing.T) {
-	testNativeCOFFImportDirectoryMixed(t, []bool{true, true})
+	testNativeCOFFImportDirectoryMixed(t, []bool{true, true}, false)
 }
