@@ -76,6 +76,10 @@ func TestNativeCOFFImportDirectoryMixed(t *testing.T) {
 }
 
 func testNativeCOFFImportDirectoryMixed(t *testing.T, omit []bool, repeated bool) {
+	testNativeCOFFImportDirectoryMixedLayout(t, omit, directoryLayout{repeated: repeated})
+}
+
+func testNativeCOFFImportDirectoryMixedLayout(t *testing.T, omit []bool, layout directoryLayout) {
 	t.Helper()
 	if runtime.GOOS != "windows" {
 		t.Skip("native import directories require Windows")
@@ -113,7 +117,7 @@ func testNativeCOFFImportDirectoryMixed(t *testing.T, omit []bool, repeated bool
 				if err != nil {
 					t.Fatal(err)
 				}
-				imports, _ := coffDirectoryAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), nil, omit, repeated)+directoryMixedAssembly(target, selection != "ordinary"))
+				imports, _ := coffDirectoryAssembly(t, target, importDirectoryAssemblyOptions(target, directoryGroups(), nil, omit, layout)+directoryMixedAssembly(target, selection != "ordinary"))
 				poison, _ := coffAssembly(t, target, importDirectoryAssembly(target, []directoryFixture{{"not-installed-directory.dll", []longImportFixture{{"poison_directory", "absent", 0, false}}}}))
 				var override string
 				if selection == "discard" {
