@@ -89,6 +89,7 @@ func Generate(header string, declarations *clang.Header, functions []Function) (
 	native := map[string]bool{}
 	for _, function := range declarations.Functions {
 		native[function.Name] = true
+		native[function.Symbol] = true
 	}
 	var public, bodies bytes.Buffer
 	result := &Facade{}

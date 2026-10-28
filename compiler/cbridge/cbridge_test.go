@@ -63,6 +63,11 @@ func TestGenerateContracts(t *testing.T) {
 	if _, err := Generate("native.h", nil, requests); err == nil {
 		t.Fatal("nil declarations accepted")
 	}
+	aliased := scalarHeader()
+	aliased.Functions[0].Symbol = "alias_add"
+	if _, err := Generate("native.h", aliased, []Function{{Name: "add", Symbol: "alias_add"}}); err == nil {
+		t.Fatal("facade export collided with the original assembler symbol")
+	}
 }
 
 func TestGenerateLimitsAndInvalidDescriptions(t *testing.T) {
