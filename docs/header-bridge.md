@@ -29,7 +29,9 @@ record: both the producer and its caller are compiled with the same C compiler.
 4. Load the producer and facade as objects, archives or shared libraries.
    Select both `Binding.NativeSymbol` and `Binding.Symbol` as link roots for
    lazy archives. Generated code may need native `memcpy`/`memset`; supply the
-   matching runtime symbols just as for other C objects.
+   matching runtime symbols just as for other C objects. DLL exports can differ
+   from normalized object names: set `Binding.NativeSymbol` to the actual export
+   when needed (MSVC i386 stdcall exports retain a leading underscore).
 5. Use `Binding.Call` with an `Invoker` that retains the facade image and calls
    its exact C signature. Retain the original target independently throughout
    the call. The tested [example](../examples/headerbridge/call.go) does both;
