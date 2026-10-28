@@ -30,6 +30,10 @@ func TestNativeGCCHeaderFunctionPointers(t *testing.T) {
 	testNativeEntries(t, clangTool(t), gccTool(t))
 }
 
+func TestNativeGCCHeaderCallingConventions(t *testing.T) {
+	testNativeConventions(t, clangTool(t), gccTool(t))
+}
+
 func gccTool(t *testing.T) string {
 	t.Helper()
 	candidates := []string{"gcc"}

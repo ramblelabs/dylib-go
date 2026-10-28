@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	dylib "github.com/ramblelabs/dylib-go"
@@ -124,6 +125,17 @@ func testNativeFacade(t *testing.T, compiler string, h *clang.Header, f *cbridge
 
 func testNativeFacadeOptimizations(t *testing.T, compiler string, h *clang.Header, f *cbridge.Facade, producer string, check func(*testing.T, *dylib.Session, *clang.Header, *cbridge.Facade), optimizations, runtimeArchives []string, extra ...string) {
 	t.Helper()
+	msvcLinker := false
+	if runtime.GOOS == "windows" {
+		// Select the link mode from the actual producer options. The logical
+		// header target alone need not describe the producer's COFF dialect.
+		args := append(append([]string(nil), flags()...), extra...)
+		out, err := exec.Command(compiler, append(args, "-dumpmachine")...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("producer target: %v\n%s", err, out)
+		}
+		msvcLinker = strings.Contains(string(out), "-windows-msvc")
+	}
 	for _, optimization := range optimizations {
 		t.Run(optimization, func(t *testing.T) {
 			dir := t.TempDir()
@@ -160,12 +172,42 @@ func testNativeFacadeOptimizations(t *testing.T, compiler string, h *clang.Heade
 			}
 			link = append(link, flags()...)
 			link = append(link, objects...)
-			compile(t, compiler, append(link, "-o", library)...)
+			if msvcLinker {
+				// MSVC i386 /EXPORT directives contain decorated names. A GNU
+				// driver adds another underscore; use the producer's linker mode.
+				// Build only import metadata for the C operations emitted by this
+				// freestanding facade; the system msvcrt.dll supplies their code.
+				definition, imports := filepath.Join(dir, "crt.def"), filepath.Join(dir, "crt.lib")
+				if err := os.WriteFile(definition, []byte("LIBRARY msvcrt.dll\nEXPORTS\nmemcpy\nmemmove\nmemset\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				linker := tool(t, "lld-link")
+				machine := map[string]string{"amd64": "X64", "arm64": "ARM64", "386": "X86"}[runtime.GOARCH]
+				compile(t, linker, "/dll", "/noentry", "/nodefaultlib", "/machine:"+machine, "/def:"+definition, "/implib:"+imports, "/out:"+filepath.Join(dir, "unused.dll"))
+				args := append([]string{"/dll", "/noentry", "/nodefaultlib", "/out:" + library}, objects...)
+				compile(t, linker, append(args, imports)...)
+			} else {
+				compile(t, compiler, append(link, "-o", library)...)
+			}
 			for _, input := range []struct {
 				name  string
 				paths []string
 			}{{"object", objects}, {"archive", []string{archive}}, {"library", []string{library}}} {
 				t.Run(input.name, func(t *testing.T) {
+					bindings := f
+					if input.name == "library" && msvcLinker && runtime.GOARCH == "386" {
+						// MSVC DLL exports retain stdcall's linker underscore;
+						// raw COFF names are normalized. Select the actual export
+						// explicitly, as for any header/DLL export alias.
+						copy := *f
+						copy.Functions = append([]cbridge.Binding(nil), f.Functions...)
+						for i := range copy.Functions {
+							if copy.Functions[i].Signature().Convention == abi.StdCall {
+								copy.Functions[i].NativeSymbol = "_" + copy.Functions[i].NativeSymbol
+							}
+						}
+						bindings = &copy
+					}
 					s := dylib.New(dylib.Options{ProcessSymbols: runtime.GOOS != "windows"})
 					defer s.Close()
 					if runtime.GOOS == "windows" {
@@ -188,13 +230,13 @@ func testNativeFacadeOptimizations(t *testing.T, compiler string, h *clang.Heade
 						}
 					}
 					roots := []string{}
-					for _, b := range f.Functions {
+					for _, b := range bindings.Functions {
 						roots = append(roots, b.NativeSymbol, b.Symbol)
 					}
 					if err := s.Link(roots...); err != nil {
 						t.Fatal(err)
 					}
-					check(t, s, h, f)
+					check(t, s, h, bindings)
 				})
 			}
 		})

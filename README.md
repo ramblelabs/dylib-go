@@ -596,6 +596,11 @@ small AMD64 floating/unnamed-bitfield layouts that reconstructed record bridges
 reject. Go and llgo exchange three native pointers and an `int32` status, with
 checked carrier layouts and no libffi requirement.
 
+Fixed Win64/SysV64, Windows 386 stdcall/fastcall/thiscall and Windows
+amd64/386 vectorcall are qualified through this original prototype, including
+attributed records, HFA/large results and native function-pointer factories.
+See the [calling convention coverage](docs/header-bridge.md#qualified-scope).
+
 The following helper retains both loaded images. Native CI executes it with
 Clang and GCC producers, objects, archives and shared libraries. See
 [generation, matching compiler flags and lifetime rules](docs/header-bridge.md).
@@ -959,7 +964,7 @@ Dynamic `Bind` defaults to the host C ABI (`FFI_DEFAULT_ABI`), with explicit cde
 | Complex C record values | Original-header C facade | Supported subset | `compiler/cbridge` + matching native Clang/GCC; unnamed bitfields with floating gaps, packed/aligned/nested records, const members, arrays, large results, borrowed native function pointers and concrete variadic values; checked C storage with cgo/direct llgo |
 | C with x86 conventions | Windows 386 stdcall / fastcall / thiscall | Supported subset | Explicit `Convention` or generated `CgoSource`; fixed calls and native function pointers, exact symbols; thiscall has an explicit pointer receiver and uses compiled C bridges for struct results; tested with C fixtures |
 | C callbacks into Go / llgo | Fixed host C ABI; Windows 386 stdcall / fastcall / thiscall | Supported subset | Scalars, pointers, ordinary struct values, captures, explicit leases, and C-created threads; no variadic callbacks |
-| C vectorcall | Windows amd64 / 386 | Compiled bridge subset | `Header.CgoSource` with a vectorcall-capable C compiler; fixed scalar/pointer calls and native function pointers, plus ordinary records on amd64 and GNU 386; Go amd64/386 and llgo amd64 runtime tests |
+| C vectorcall | Windows amd64 / 386 | Compiled bridge subset | `Header.CgoSource` supports fixed scalar/pointer calls, native entries and ordinary amd64/GNU 386 records; `compiler/cbridge` additionally keeps attributed and MSVC 386 record/HFA values inside the original compiler. Go amd64/386 and llgo amd64 runtime tests |
 | C with explicit amd64 conventions | Microsoft x64 / System V AMD64 | Fixed calls | `abi.Win64` on Linux/macOS/Windows amd64; `abi.SysV64` dynamic calls/callbacks on Linux/macOS amd64; generated C bridges support both on all three amd64 hosts. Mixed scalars, ordinary structs, indirect results, native pointers and register spills; Windows SysV Go callbacks need a compiled adapter |
 | C with other conventions | Other non-default ABIs | Not implemented | Use a compiled adapter matching the convention |
 | C++ C exports | `extern "C"`, host C ABI | Verified subset | C exports and global construction/destruction on native targets; ordinary raw fixtures disable exceptions and RTTI; Linux amd64/arm64/386 and macOS amd64/arm64 execute native throw/catch/rethrow and RAII with explicit compatible runtimes and `RegisterUnwind`; macOS accepts the implemented DWARF/compact tables |

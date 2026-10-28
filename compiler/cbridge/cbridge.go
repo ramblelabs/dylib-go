@@ -127,7 +127,7 @@ func Generate(header string, declarations *clang.Header, functions []Function) (
 	digest = sha256.Sum256(append(public.Bytes(), g.defs.Bytes()...))
 	guard := fmt.Sprintf("DYLIB_CBRIDGE_%X", digest[:8])
 	api := fmt.Sprintf("#if defined(_WIN32)\n#define %s __declspec(dllexport) __cdecl\n#else\n#define %s __attribute__((visibility(\"default\")))\n#endif\n", g.api, g.api)
-	result.CHeader = []byte(fmt.Sprintf("#ifndef %s\n#define %s\n#include <stdint.h>\n#include <stddef.h>\n%s#pragma pack(push, 16)\n%s#pragma pack(pop)\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n%s#ifdef __cplusplus\n}\n#endif\n#endif\n", guard, guard, api, g.defs.String(), public.String()))
+	result.CHeader = []byte(fmt.Sprintf("#ifndef %s\n#define %s\n#include <stdint.h>\n#include <stddef.h>\n#include <stdalign.h>\n%s#pragma pack(push, 16)\n%s#pragma pack(pop)\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n%s#ifdef __cplusplus\n}\n#endif\n#endif\n", guard, guard, api, g.defs.String(), public.String()))
 	result.CSource = []byte(fmt.Sprintf("#include <stdint.h>\n#include <stdbool.h>\n#include <stddef.h>\n#pragma pack(push)\n#include \"%s\"\n#pragma pack(pop)\n%s\n%s", header, result.CHeader, bodies.String()))
 	if len(result.CSource) > maxSource {
 		return nil, fmt.Errorf("cbridge: source exceeds 1 MiB")
@@ -254,7 +254,9 @@ func (g *generator) transport(d abi.TypeDesc) (*transport, error) {
 		} else {
 			fmt.Fprintf(&g.defs, "typedef struct %s {\n", t.name)
 			for i, child := range t.children {
-				fmt.Fprintf(&g.defs, "%s v%d;\n", child.name, i)
+				// MSVC layout lets -fpack-struct override #pragma pack. An explicit
+				// field alignment also preserves the natural carrier under that flag.
+				fmt.Fprintf(&g.defs, "alignas(%s) %s v%d;\n", child.name, child.name, i)
 			}
 			fmt.Fprintf(&g.defs, "} %s;\n", t.name)
 		}

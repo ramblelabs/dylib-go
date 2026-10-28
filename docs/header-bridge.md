@@ -29,7 +29,9 @@ record: both the producer and its caller are compiled with the same C compiler.
 4. Load the producer and facade as objects, archives or shared libraries.
    Select both `Binding.NativeSymbol` and `Binding.Symbol` as link roots for
    lazy archives. Generated code may need native `memcpy`/`memset`; supply the
-   matching runtime symbols just as for other C objects.
+   matching runtime symbols just as for other C objects. DLL exports can differ
+   from normalized object names: set `Binding.NativeSymbol` to the actual export
+   when needed (MSVC i386 stdcall exports retain a leading underscore).
 5. Use `Binding.Call` with an `Invoker` that retains the facade image and calls
    its exact C signature. Retain the original target independently throughout
    the call. The tested [example](../examples/headerbridge/call.go) does both;
@@ -93,12 +95,33 @@ native entries using those records stay inside the original-header facade.
 | Values | All supported fixed-width integers, Boolean, float/double, native pointers, nested records and multidimensional fixed arrays; const scalar/record/array/bitfield/pointer subobjects use native C17 initialization |
 | Native record ABI | Unnamed nonzero/zero-width bitfields, empty argument lanes, floating prefix/tail gaps, packed/aligned records, large results, exhausted registers and concrete variadic values |
 | Native entries | Record-valued entry parameters/results, higher-order factories, multi-level pointer slots, null entries accepted by the original API and native variadic entry calls; leased scalar Go callbacks additionally with libffi |
-| Compiler packing | Ordinary defaults and `-fpack-struct=1`; natural carriers explicitly restore their own packing scope |
+| Calling conventions | Fixed cdecl, explicit Microsoft x64/System V AMD64, Windows i386 stdcall/fastcall/thiscall and Windows amd64/i386 vectorcall; original record-valued native entries retain the same convention |
+| Compiler packing | Ordinary defaults and `-fpack-struct=1`; natural carriers restore their packing scope and explicitly align members, including MSVC global packing |
 | Safety | Corrupted layout headers/sizes/alignments/offsets, invoker/native status failures, concurrent queries and retired facade images |
 
 Native C control callers are compiled from the original prototypes with the
 same producer. The compiler tests separately inspect all eight target triples;
 cross-target compilation supplements native execution.
+
+The original-header path qualifies these calling conventions independently of
+reconstructed `Header.CgoSource` bindings:
+
+| Convention | Native execution targets | Producers and values |
+| --- | --- | --- |
+| cdecl | All eight Go hosts and six 64-bit llgo hosts | Clang; GCC additionally on Unix; scalar/native-address calls, attributed records, HFA values, large results and register exhaustion |
+| Microsoft x64 / System V AMD64 | Linux, macOS and Windows amd64 | Clang; GCC additionally on Unix; both ordinary and globally packed producer layouts |
+| stdcall / fastcall / thiscall | Windows 386, Go | Clang GNU and MSVC targets; explicit pointer receiver, attributed records and hidden results |
+| vectorcall | Windows amd64 with Go/llgo; Windows 386 with Go | Clang GNU and MSVC targets, including MSVC 386 record/HFA arguments and results |
+
+Each family also calls native record/HFA function pointers obtained from a
+factory. The facade and producer use the same target, compiler and packing flags.
+Separate non-inlined C control callers exercise the original prototypes. Runtime
+cases cover `-O0`/`-O2` objects, archives and complete libraries, with and without
+libffi where applicable. Go/llgo still call the same cdecl three-pointer carrier
+interface; cross-target compiler checks inspect the original call instructions
+and verify that the carrier has no native records or alternate conventions.
+These fixed native-entry checks do not add Go callbacks for arbitrary attributed
+record conventions or variadic non-cdecl signatures.
 
 Arguments use designated initialization, including const subobjects and native
 callback-pointer fields. Array initializers use private element/block macros that
@@ -122,4 +145,5 @@ The original Clang parser's limits still apply, including
 unions without an explicit view, flexible arrays and unsupported scalar types.
 This package supplies neither C++ object/exception handling nor Go callbacks for
 arbitrary native record conventions. Other calling conventions need their own
-execution qualification even though the original C prototype is preserved.
+execution qualification beyond the table above, even though the original C
+prototype is preserved.
