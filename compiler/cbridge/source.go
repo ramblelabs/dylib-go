@@ -87,6 +87,9 @@ func (g *generator) function(out *bytes.Buffer, d clang.Declaration, symbol stri
 	fmt.Fprint(out, "return 0;\n}\n")
 	fmt.Fprintf(out, "const %s *%sin=(const %s *)%s;\n%s *%sout=(%s *)%s;\n", in.name, local, in.name, inputPtr, result.name, local, result.name, outputPtr)
 	var args []string
+	// Macros are undefined after every argument, so functions share a short
+	// facade-private namespace even when their requested exports have long names.
+	initializer := nativeInitializer{generator: g, prefix: g.prefix + "init_"}
 	for i := range s.Args {
 		desc := s.ArgumentType(i)
 		name := fmt.Sprintf("%sa%d", local, i)
@@ -101,10 +104,17 @@ func (g *generator) function(out *bytes.Buffer, d clang.Declaration, symbol stri
 		if err != nil {
 			return Binding{}, err
 		}
-		fmt.Fprintf(out, "%s %s={0};\n", kind, name)
-		if err := g.copy(out, desc, name, fmt.Sprintf("%sin->v%d", local, i), true, local, 0); err != nil {
+		expression, err := initializer.expression(desc, name, fmt.Sprintf("%sin->v%d", local, i), nil)
+		if err != nil {
 			return Binding{}, err
 		}
+		out.Write(initializer.definitions.Bytes())
+		fmt.Fprintf(out, "%s %s=%s;\n", kind, name, expression)
+		for _, macro := range initializer.macros {
+			fmt.Fprintf(out, "#undef %s\n", macro)
+		}
+		initializer.definitions.Reset()
+		initializer.macros = nil
 		args = append(args, name)
 	}
 	call := fmt.Sprintf("((__typeof__(&%s))%s)(%s)", d.Name, target, strings.Join(args, ","))
@@ -115,7 +125,7 @@ func (g *generator) function(out *bytes.Buffer, d clang.Declaration, symbol stri
 	}
 	fmt.Fprintf(out, "__builtin_memset(%sout,0,sizeof(*%sout));\n", local, local)
 	if s.Result != abi.Void {
-		if err := g.copy(out, s.ReturnType(), local+"out->v0", local+"result", false, local, 0); err != nil {
+		if err := g.copyOutput(out, s.ReturnType(), local+"out->v0", local+"result", local, 0); err != nil {
 			return Binding{}, err
 		}
 	}
@@ -123,14 +133,14 @@ func (g *generator) function(out *bytes.Buffer, d clang.Declaration, symbol stri
 	return Binding{Name: d.Name, Symbol: symbol, NativeSymbol: d.Symbol, target: g.header.Target, signature: s.Clone(), input: input, output: output, layouts: layouts, words: words}, nil
 }
 
-func (g *generator) copy(out *bytes.Buffer, d abi.TypeDesc, destination, source string, input bool, prefix string, depth int) error {
+func (g *generator) copyOutput(out *bytes.Buffer, d abi.TypeDesc, destination, source string, prefix string, depth int) error {
 	if out.Len() > maxSource {
 		return fmt.Errorf("source exceeds 1 MiB")
 	}
 	if d.Type == abi.Array {
 		index := fmt.Sprintf("%si%d", prefix, depth)
 		fmt.Fprintf(out, "for (size_t %s=0;%s<%d;++%s) {\n", index, index, d.Len, index)
-		if err := g.copy(out, *d.Elem, destination+"["+index+"]", source+"["+index+"]", input, prefix, depth+1); err != nil {
+		if err := g.copyOutput(out, *d.Elem, destination+"["+index+"]", source+"["+index+"]", prefix, depth+1); err != nil {
 			return err
 		}
 		fmt.Fprint(out, "}\n")
@@ -144,23 +154,14 @@ func (g *generator) copy(out *bytes.Buffer, d abi.TypeDesc, destination, source 
 			if !identifier(field.Name) {
 				return fmt.Errorf("record field requires an accessible C identifier")
 			}
-			native, logical := field.Name, fmt.Sprintf("v%d", i)
-			to, from := logical, native
-			if input {
-				to, from = native, logical
-			}
-			if err := g.copy(out, field.Type, "("+destination+")."+to, "("+source+")."+from, input, prefix, depth+1); err != nil {
+			if err := g.copyOutput(out, field.Type, fmt.Sprintf("(%s).v%d", destination, i), "("+source+")."+field.Name, prefix, depth+1); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 	if d.Type == abi.Pointer {
-		cast := "void *"
-		if input {
-			cast = "__typeof__(" + destination + ")"
-		}
-		fmt.Fprintf(out, "%s=(%s)(%s);\n", destination, cast, source)
+		fmt.Fprintf(out, "%s=(void *)(%s);\n", destination, source)
 	} else {
 		fmt.Fprintf(out, "%s=%s;\n", destination, source)
 	}

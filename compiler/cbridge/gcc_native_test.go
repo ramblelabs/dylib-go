@@ -17,6 +17,17 @@ func TestNativeGCCHeaderBridge(t *testing.T) {
 		parser = "clang"
 	}
 	parser = tool(t, parser)
+	// Both the producer and facade use GCC. Clang supplies only the logical field
+	// model; its native record offsets/classes never cross the pointer boundary.
+	testNativeHeader(t, parser, gccTool(t))
+}
+
+func TestNativeGCCHeaderConstLargeArray(t *testing.T) {
+	testNativeConstLargeArray(t, clangTool(t), gccTool(t))
+}
+
+func gccTool(t *testing.T) string {
+	t.Helper()
 	candidates := []string{"gcc"}
 	if fc := os.Getenv("DYLIB_FC"); strings.Contains(filepath.Base(fc), "gfortran") {
 		candidates = append(candidates, filepath.Join(filepath.Dir(fc), strings.Replace(filepath.Base(fc), "gfortran", "gcc", 1)))
@@ -40,7 +51,5 @@ func TestNativeGCCHeaderBridge(t *testing.T) {
 		}
 		t.Skip("GNU GCC unavailable")
 	}
-	// Both the producer and facade use GCC. Clang supplies only the logical field
-	// model; its native record offsets/classes never cross the pointer boundary.
-	testNativeHeader(t, parser, gcc)
+	return gcc
 }

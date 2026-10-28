@@ -25,6 +25,19 @@ typedef struct {
     int32_t (*callback)(int32_t,int32_t);
 } Envelope;
 
+typedef const int32_t ConstNumber;
+typedef struct { ConstNumber a; const int32_t b; } ConstPair;
+typedef const int16_t ConstRow[3];
+typedef struct __attribute__((packed,aligned(8))) {
+    unsigned :3;
+    const unsigned flags:5;
+    const ConstPair pairs[2];
+    ConstRow matrix[2];
+    int32_t (*const callback)(int32_t,int32_t);
+    const int32_t *const pointer;
+} ConstPacket;
+typedef struct { const int16_t values[2][65]; } ConstBlocks;
+
 int32_t sum(int32_t,int32_t);
 int32_t native_control(void);
 uint64_t scalars(int8_t,uint8_t,int16_t,uint16_t,int32_t,uint32_t,int64_t,uint64_t,float,double,bool);
@@ -41,4 +54,9 @@ Envelope envelope(Envelope);
 FloatGap variable(FloatGap,int32_t,...);
 FloatGap record_tail(int32_t,...);
 double exhausted(double,double,double,double,double,double,double,double,FloatGap,FloatTail);
+ConstPair const_pair(ConstPair);
+ConstPacket const_packet(ConstPacket);
+int32_t const_tail(int32_t,...);
+int32_t const_stack(int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,int32_t,ConstPacket);
+int32_t const_blocks(ConstBlocks);
 #endif
