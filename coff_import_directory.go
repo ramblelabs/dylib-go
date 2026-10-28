@@ -53,7 +53,7 @@ func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 			}
 		}
 	}
-	for _, name := range []string{".idata$2", ".idata$4", ".idata$5"} {
+	for _, name := range []string{".idata$2", ".idata$5"} {
 		if d.indexes[name] == 0 {
 			return nil, false
 		}
@@ -86,6 +86,9 @@ func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 	}
 	for _, name := range []string{".idata$4", ".idata$5"} {
 		index := d.indexes[name]
+		if index == 0 {
+			continue
+		}
 		sec := o.sections[index]
 		if sec.size%d.width != 0 {
 			return nil, false
@@ -141,18 +144,30 @@ func (d *coffImportDirectory) directory() bool {
 	}
 	for offset := uint64(0); offset < sec.size; offset += 20 {
 		bytes := sec.data[offset : offset+20]
-		_, relocated := d.sites[coffImportSite{index, offset}]
-		if allZero(bytes) && !relocated {
+		_, lookupRelocation := d.sites[coffImportSite{index, offset}]
+		_, nameRelocation := d.sites[coffImportSite{index, offset + 12}]
+		_, addressRelocation := d.sites[coffImportSite{index, offset + 16}]
+		if allZero(bytes) && !lookupRelocation && !nameRelocation && !addressRelocation {
 			return len(d.entries) != 0 && allZero(sec.data[offset:])
 		}
 		if !allZero(bytes[4:12]) {
 			return false
 		}
-		ilt, ok := d.reference(index, offset)
 		iat, yes := d.reference(index, offset+16)
 		name, named := d.reference(index, offset+12)
-		if !ok || !yes || !named || ilt.section != d.indexes[".idata$4"] || iat.section != d.indexes[".idata$5"] {
+		if !yes || !named || iat.section != d.indexes[".idata$5"] {
 			return false
+		}
+		// An unbound IAT contains the lookup entries when OriginalFirstThunk
+		// is absent. A nonzero field or any relocation must still identify an
+		// actual ILT; a malformed lookup reference must never become a fallback.
+		ilt := iat
+		if lookupRelocation || !allZero(bytes[:4]) {
+			var ok bool
+			ilt, ok = d.reference(index, offset)
+			if !ok || ilt.section != d.indexes[".idata$4"] {
+				return false
+			}
 		}
 		nativeName := d.o.sections[name.section].name
 		if nativeName != ".idata$6" && nativeName != ".idata$7" {
@@ -214,7 +229,10 @@ func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string) bool {
 				return false
 			}
 			first, ok := d.reference(ilt.section, ilt.offset)
-			second, yes := d.reference(iat.section, iat.offset)
+			second, yes := first, ok
+			if x != y {
+				second, yes = d.reference(iat.section, iat.offset)
+			}
 			if !ok || !yes || first != second || first.section != d.indexes[".idata$6"] {
 				return false
 			}

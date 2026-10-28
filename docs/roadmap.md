@@ -52,6 +52,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Ordinary COMDAT sections in mixed GNU import members, preserving selection, associative lifecycle entries, lazy extraction and failed-link retry; native Windows Go/llgo tests cover retained and discarded groups.
 - [x] Contiguous multi-entry GNU import members for one DLL, reusing single-entry validation for function/data/const/name/ordinal slots, preserving ordinary sections/groups, and qualifying pure/mixed Windows Go/llgo calls, lifecycle selection, laziness and retry.
 - [x] Self-contained COFF import descriptors with explicit per-DLL terminated IAT/ILT groups, named/data/ordinal imports, shared ordinary-section overlays, native DLL controls and Go/llgo execution.
+- [x] Per-descriptor optional ILTs in self-contained COFF directories, unbound IAT lookup, mixed-present lookup groups, independent PE/Windows controls and pure/mixed object/archive Go/llgo calls.
 - [ ] Repeated IAT sections, remaining custom/bound import layouts and delay import tables.
 - [x] Mach-O external `N_INDR` forwarding aliases, chains, archive dependencies, and native macOS object/archive calls.
 - [x] Mach-O eager indirect pointer binding, local/absolute markers, and standard amd64/arm64 stubs with native scalar/large-record calls.
