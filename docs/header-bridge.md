@@ -97,9 +97,9 @@ This keeps a 64 KiB byte array within the existing generated-source bound;
 the original ABI storage and descriptor limits still apply. Native tests check
 const nested values, variadic records, exhausted registers and array block tails
 at `-O0`/`-O2`, plus the full 64 KiB array at `-O0`, through Clang/GCC objects,
-archives and shared libraries. Large Windows
-array fixtures disable compiler stack-argument probes; those tests qualify the
-initializer and storage bound separately from CRT-specific stack-probe helpers.
+archives and shared libraries. Large Windows array fixtures retain stack probes
+and load the matching compiler builtins archive for raw-object helper references.
+Callers must provide those compiler runtime dependencies for their own objects.
 
 Function-pointer parameters/results need a separate adapter; native pointer
 fields are supported. The original Clang parser's limits still apply, including

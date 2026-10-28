@@ -4,8 +4,11 @@ package cbridge_test
 
 import (
 	"context"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	dylib "github.com/ramblelabs/dylib-go"
@@ -52,14 +55,22 @@ func testNativeConstLargeArray(t *testing.T, parser, compiler string) {
 			t.Fatal("const 64 KiB array", got, expected, err)
 		}
 	}
-	var extra []string
+	var runtimeArchives []string
 	if runtime.GOOS == "windows" {
-		// Keep this test about initializer/storage bounds. Its large native stack
-		// frame does not exercise a CRT-specific stack-probe helper contract.
-		extra = append(extra, "-mno-stack-arg-probe")
+		// Large frames must probe Windows' guard pages. Resolve the compiler's
+		// own builtins archive lazily, exactly as other raw-object dependencies.
+		output, err := exec.Command(compiler, append(flags(), "-print-libgcc-file-name")...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("compiler runtime archive: %v\n%s", err, output)
+		}
+		path := strings.TrimSpace(string(output))
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("compiler runtime archive %q: %v", path, err)
+		}
+		runtimeArchives = append(runtimeArchives, path)
 	}
 	// The full storage boundary is independent of optimizer behavior. Smaller
 	// nested/block/remainder initializers run at both O0 and O2 in the main fixture;
 	// GCC's optimization of 65,536 separate initializer loads is very expensive.
-	testNativeFacadeOptimizations(t, compiler, h, f, "testdata/const_large.c", check, []string{"-O0"}, extra...)
+	testNativeFacadeOptimizations(t, compiler, h, f, "testdata/const_large.c", check, []string{"-O0"}, runtimeArchives)
 }

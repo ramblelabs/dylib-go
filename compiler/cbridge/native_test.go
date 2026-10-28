@@ -119,10 +119,10 @@ func testNativeHeader(t *testing.T, parser, compiler string, extra ...string) {
 
 func testNativeFacade(t *testing.T, compiler string, h *clang.Header, f *cbridge.Facade, producer string, check func(*testing.T, *dylib.Session, *clang.Header, *cbridge.Facade), extra ...string) {
 	t.Helper()
-	testNativeFacadeOptimizations(t, compiler, h, f, producer, check, []string{"-O0", "-O2"}, extra...)
+	testNativeFacadeOptimizations(t, compiler, h, f, producer, check, []string{"-O0", "-O2"}, nil, extra...)
 }
 
-func testNativeFacadeOptimizations(t *testing.T, compiler string, h *clang.Header, f *cbridge.Facade, producer string, check func(*testing.T, *dylib.Session, *clang.Header, *cbridge.Facade), optimizations []string, extra ...string) {
+func testNativeFacadeOptimizations(t *testing.T, compiler string, h *clang.Header, f *cbridge.Facade, producer string, check func(*testing.T, *dylib.Session, *clang.Header, *cbridge.Facade), optimizations, runtimeArchives []string, extra ...string) {
 	t.Helper()
 	for _, optimization := range optimizations {
 		t.Run(optimization, func(t *testing.T) {
@@ -178,6 +178,11 @@ func testNativeFacadeOptimizations(t *testing.T, compiler string, h *clang.Heade
 						}
 					}
 					for _, path := range input.paths {
+						if err := s.Load(path); err != nil {
+							t.Fatal(err)
+						}
+					}
+					for _, path := range runtimeArchives {
 						if err := s.Load(path); err != nil {
 							t.Fatal(err)
 						}
