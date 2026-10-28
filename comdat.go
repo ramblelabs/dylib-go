@@ -27,7 +27,7 @@ func coalesceObjects(inputs []*object) ([]*object, error) {
 		}
 		objects[i] = &o
 		for j, g := range o.groups {
-			if g.selection == 5 {
+			if g.selection == 5 || g.local {
 				continue
 			}
 			key := o.info.Format + "\x00" + g.key
@@ -94,6 +94,8 @@ func coalesceObjects(inputs []*object) ([]*object, error) {
 				if err != nil {
 					return false, err
 				}
+			} else if g.local {
+				retained = true
 			} else {
 				winner := winners[o.info.Format+"\x00"+g.key]
 				retained = winner.object == o && winner.index == i

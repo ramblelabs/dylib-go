@@ -34,6 +34,8 @@ func parseCOFF(name string, b []byte) (*file, error) {
 	count := len(f.records) / f.entrySize
 	o.symbols = make([]symbol, count)
 	comdats := make(map[int]sectionGroup)
+	leaders := make(map[int]int)
+	pendingLeaders := make(map[int]bool)
 	for i := 0; i < count; {
 		s := f.symbol(i)
 		if i+int(s.aux) >= count {
@@ -77,7 +79,8 @@ func parseCOFF(name string, b []byte) (*file, error) {
 			}
 		}
 		o.symbols[i] = v
-		if o.info.Kind == "object" && s.class == 3 && s.value == 0 && s.typ == 0 && s.aux != 0 && s.section > 0 {
+		sectionDefinition := s.class == 3 && s.value == 0 && s.typ == 0 && s.aux != 0 && s.section > 0
+		if o.info.Kind == "object" && sectionDefinition {
 			sectionIndex := int(s.section)
 			if sectionIndex > len(f.sections) {
 				return nil, fmt.Errorf("invalid COFF section definition")
@@ -95,6 +98,17 @@ func parseCOFF(name string, b []byte) (*file, error) {
 					}
 				}
 				comdats[sectionIndex] = g
+				pendingLeaders[sectionIndex] = g.selection != 5
+			}
+		}
+		// The first subsequent definition in this section is its leader. Other
+		// sections, absolute symbols and undefined references may be interleaved.
+		// A static leader keeps its scope even if a public alias follows it.
+		if !sectionDefinition && pendingLeaders[int(s.section)] {
+			pendingLeaders[int(s.section)] = false
+			leaders[int(s.section)] = -1 // Present but outside the qualified form.
+			if s.value == 0 && (s.class == 2 || s.class == 3) {
+				leaders[int(s.section)] = i
 			}
 		}
 		for j := 1; j <= int(s.aux); j++ {
@@ -110,6 +124,7 @@ func parseCOFF(name string, b []byte) (*file, error) {
 			return nil, fmt.Errorf("COFF weak fallback must reference an external symbol")
 		}
 	}
+	parents := coffUnwindParents(f, comdats, leaders)
 	o.sections = make([]*section, len(f.sections)+1)
 	for i, s := range f.sections {
 		flags := s.flags
@@ -119,7 +134,7 @@ func parseCOFF(name string, b []byte) (*file, error) {
 		if s.name == ".didat" || strings.HasPrefix(s.name, ".didat$") {
 			o.unsupported("COFF delay import tables: " + s.name)
 		}
-		if flags&0x200 != 0 || strings.HasPrefix(s.name, ".debug") || s.name == ".drectve" {
+		if coffOmittedSection(s) {
 			continue
 		}
 		if flags&0x1000 != 0 {
@@ -129,15 +144,21 @@ func parseCOFF(name string, b []byte) (*file, error) {
 			}
 			switch g.selection {
 			case 1, 2, 3, 4, 6, 7:
-				// The external definition identifies the COMDAT, not the section name.
-				for _, sym := range o.symbols {
-					if sym.global && sym.section == i+1 && sym.value == 0 {
-						g.key = sym.name
-						break
+				if leader, exists := leaders[i+1]; exists {
+					if leader < 0 {
+						return nil, fmt.Errorf("invalid COFF COMDAT leader: %s", s.name)
 					}
-				}
-				if g.key == "" {
-					return nil, fmt.Errorf("COFF COMDAT has no external key")
+					g.key = o.symbols[leader].name
+					g.local = !o.symbols[leader].global
+					if g.key == "" {
+						return nil, fmt.Errorf("COFF COMDAT has an empty leader")
+					}
+				} else {
+					parent, err := coffImplicitParent(s, parents)
+					if err != nil {
+						return nil, err
+					}
+					g.selection, g.parent = 5, parent
 				}
 			case 5:
 				if g.parent == i+1 || g.parent <= 0 || g.parent > len(f.sections) {

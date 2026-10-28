@@ -45,6 +45,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Explicit fixed Windows 386 thiscall: receiver pointers, mixed scalar/struct arguments, dynamic scalar/pointer/void calls and callbacks, native function-pointer metadata, generated C bridges with hidden struct results, and MSVC/GNU native execution fixtures.
 - [x] Fixed-length array members and pointees, including nested arrays/records and callbacks.
 - [x] COFF weak fallback chains, archive search policies, and COMDAT EXACT_MATCH/NEWEST.
+- [x] Object-scoped private COFF COMDAT leaders, ordered leader/alias validation and implicit MinGW unwind associations, including complete compiler-runtime archive parsing and Windows calls.
 - [x] COFF bigobj and extended relocation tables, including high section indexes and real object/archive calls.
 - [x] COFF short import libraries, with DLL dependency and real call tests.
 - [x] Standard GNU COFF long import libraries, including MinGW consumer and genuine GNU dlltool fixture execution.
