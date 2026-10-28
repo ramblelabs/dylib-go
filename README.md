@@ -585,6 +585,64 @@ Clang `-O0` and `-O2` builds. See the [direct binding contracts](docs/clang.md#d
 
 This complements [llcppg](https://github.com/goplus/llcppg)'s static bindings.
 
+## Original-header C bridges
+
+[`compiler/cbridge`](compiler/cbridge) keeps complex native records inside the
+producer's compiler. A separately compiled facade includes the original header,
+copies fields to ordinary C storage and calls the original prototype. This covers
+small AMD64 floating/unnamed-bitfield layouts that reconstructed record bridges
+reject. Go and llgo exchange three native pointers and an `int32` status, with
+checked carrier layouts and no libffi requirement.
+
+The following helper retains both loaded images. Native CI executes it with
+Clang and GCC producers, objects, archives and shared libraries. See
+[generation, matching compiler flags and lifetime rules](docs/header-bridge.md).
+
+<!-- embedme examples/headerbridge/call.go -->
+```go
+//go:build cgo && (linux || darwin || windows)
+
+// Package headerbridge demonstrates leased calls through an original-header facade.
+package headerbridge
+
+import (
+	"unsafe"
+
+	dylib "github.com/ramblelabs/dylib-go"
+	"github.com/ramblelabs/dylib-go/abi"
+	"github.com/ramblelabs/dylib-go/compiler/cbridge"
+)
+
+// Call retains the original function and the separately compiled facade. The
+// binding checks C carrier layouts before copying arguments into native storage.
+func Call(session *dylib.Session, binding cbridge.Binding, args ...abi.Value) (abi.Value, error) {
+	if session == nil {
+		return abi.Value{}, dylib.ErrClosed
+	}
+	if err := session.Link(binding.NativeSymbol, binding.Symbol); err != nil {
+		return abi.Value{}, err
+	}
+	target, err := session.Resolve(binding.NativeSymbol)
+	if err != nil {
+		return abi.Value{}, err
+	}
+	facade, err := session.Resolve(binding.Symbol)
+	if err != nil {
+		return abi.Value{}, err
+	}
+	var result abi.Value
+	err = target.WithAddress(func(address uintptr) error {
+		var callErr error
+		result, callErr = binding.Call(func(target uintptr, out, in unsafe.Pointer) (int32, error) {
+			return Invoke(facade, target, out, in)
+		}, address, args...)
+		return callErr
+	})
+	return result, err
+}
+
+```
+
 ## C union facades
 
 `compiler/cunion` generates C17 exports for explicitly selected scalar, native-pointer, ordinary struct or fixed array members of union arguments/results, including nested member paths. Arrays use ordinary struct wrappers with a `Values` field in generated Go bindings. The C compiler handles the native union ABI; the exported facade works with generated cgo/direct llgo bindings or dynamic `Bind`. The selected result member is a caller contract. `Bytes` selects a complete union representation with an exact compiler-checked size, including nested unions. See [union interfaces and limits](docs/unions.md).
@@ -896,6 +954,7 @@ Dynamic `Bind` defaults to the host C ABI (`FFI_DEFAULT_ABI`), with explicit cde
 | --- | --- | --- | --- |
 | C | Host default C ABI | Supported subset | Eight Go targets; six llgo targets. Scalars, pointers, ordinary structs, struct pointers and concrete variadic shapes; explicit packed/aligned records and bitfields through compiled C bridges |
 | C union values | Explicit member and whole-union byte facades | Supported subset | `compiler/cunion` + matching C17 compiler; scalar/struct/array members, exact-size byte wrappers, nested paths, objects, archives and libraries; generated cgo/direct llgo or dynamic binding |
+| Complex C record values | Original-header C facade | Supported subset | `compiler/cbridge` + matching native Clang/GCC; unnamed bitfields with floating gaps, packed/aligned/nested records, arrays, large results and concrete variadic values; checked C storage with cgo/direct llgo |
 | C with x86 conventions | Windows 386 stdcall / fastcall / thiscall | Supported subset | Explicit `Convention` or generated `CgoSource`; fixed calls and native function pointers, exact symbols; thiscall has an explicit pointer receiver and uses compiled C bridges for struct results; tested with C fixtures |
 | C callbacks into Go / llgo | Fixed host C ABI; Windows 386 stdcall / fastcall / thiscall | Supported subset | Scalars, pointers, ordinary struct values, captures, explicit leases, and C-created threads; no variadic callbacks |
 | C vectorcall | Windows amd64 / 386 | Compiled bridge subset | `Header.CgoSource` with a vectorcall-capable C compiler; fixed scalar/pointer calls and native function pointers, plus ordinary records on amd64 and GNU 386; Go amd64/386 and llgo amd64 runtime tests |
@@ -948,6 +1007,7 @@ The former experimental `BindInt32`, `CallInt32`, and `Int32Func` APIs have been
 | `abi/signature/` | Pure Go declaration, typed-invocation, and typed literal parsing |
 | `abibridge/`, `compiler/abibridge/` | Optional native Swift interfaces and a pinned native-core facade builder |
 | `compiler/clang/` | Optional validated C prototypes, dynamic descriptors and direct llgo adapter generation |
+| `compiler/cbridge/` | Original-header C facades with checked native transport storage for complex record ABIs |
 | `compiler/cxx/` | Go-rendered C++17 class facades with fixed C entry points and exception status codes |
 | `module/` | Go-only provider catalog discovery, versioned dependency graphs, explicit migration and managed replacement |
 | `internal/native/` | OS memory, instruction cache, and shared-library operations |

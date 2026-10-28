@@ -6,6 +6,11 @@ explicitly requested function declarations and their type probes. Go decodes the
 AST and renders source; no libclang library or compiler dependency is added to the
 core loader.
 
+For record ABIs that cannot be safely reconstructed, use
+[`compiler/cbridge`](header-bridge.md) to include the original header in a
+separately compiled native facade. This keeps native record lowering within the
+matching producer compiler and uses checked ordinary storage for Go/llgo.
+
 For explicit C++ class manifests, [`compiler/cxx`](cxx.md) generates a C header
 and C++17 facade. Parse that C header with the export list in `Facade.Functions`
 to reuse the same dynamic, cgo and direct llgo adapters. The C++ compiler supplies
