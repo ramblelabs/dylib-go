@@ -57,8 +57,8 @@ func testNativeConstLargeArray(t *testing.T, parser, compiler string) {
 	}
 	var runtimeArchives []string
 	if runtime.GOOS == "windows" {
-		// Large frames must probe Windows' guard pages. Resolve the compiler's
-		// own builtins archive lazily, exactly as other raw-object dependencies.
+		// Large frames must probe Windows' guard pages. Use the compiler's own
+		// probe objects; unrelated builtins may have unqualified COMDAT forms.
 		output, err := exec.Command(compiler, append(flags(), "-print-libgcc-file-name")...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("compiler runtime archive: %v\n%s", err, output)
@@ -67,7 +67,27 @@ func testNativeConstLargeArray(t *testing.T, parser, compiler string) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("compiler runtime archive %q: %v", path, err)
 		}
-		runtimeArchives = append(runtimeArchives, path)
+		members, err := exec.Command(tool(t, "llvm-ar"), "t", path).CombinedOutput()
+		if err != nil {
+			t.Fatalf("compiler runtime members: %v\n%s", err, members)
+		}
+		for _, member := range strings.Fields(string(members)) {
+			if !strings.Contains(strings.ToLower(member), "chkstk") {
+				continue
+			}
+			data, err := exec.Command(tool(t, "llvm-ar"), "p", path, member).Output()
+			if err != nil {
+				t.Fatal("compiler stack probe", member, err)
+			}
+			object := filepath.Join(t.TempDir(), filepath.Base(member))
+			if err := os.WriteFile(object, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			runtimeArchives = append(runtimeArchives, object)
+		}
+		if len(runtimeArchives) == 0 {
+			t.Fatal("compiler runtime contains no stack-probe objects", path)
+		}
 	}
 	// The full storage boundary is independent of optimizer behavior. Smaller
 	// nested/block/remainder initializers run at both O0 and O2 in the main fixture;

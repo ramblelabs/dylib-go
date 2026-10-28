@@ -98,7 +98,9 @@ the original ABI storage and descriptor limits still apply. Native tests check
 const nested values, variadic records, exhausted registers and array block tails
 at `-O0`/`-O2`, plus the full 64 KiB array at `-O0`, through Clang/GCC objects,
 archives and shared libraries. Large Windows array fixtures retain stack probes
-and load the matching compiler builtins archive for raw-object helper references.
+and load probe objects extracted from the matching compiler builtins archive for
+raw-object helper references. Unrelated builtins with unqualified COMDAT forms
+are excluded from this fixture.
 Callers must provide those compiler runtime dependencies for their own objects.
 
 Function-pointer parameters/results need a separate adapter; native pointer
