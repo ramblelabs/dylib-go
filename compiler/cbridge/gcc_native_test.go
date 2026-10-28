@@ -26,6 +26,10 @@ func TestNativeGCCHeaderConstLargeArray(t *testing.T) {
 	testNativeConstLargeArray(t, clangTool(t), gccTool(t))
 }
 
+func TestNativeGCCHeaderFunctionPointers(t *testing.T) {
+	testNativeEntries(t, clangTool(t), gccTool(t))
+}
+
 func gccTool(t *testing.T) string {
 	t.Helper()
 	candidates := []string{"gcc"}

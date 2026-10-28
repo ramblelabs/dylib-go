@@ -85,7 +85,10 @@ func (g *generator) function(out *bytes.Buffer, d clang.Declaration, symbol stri
 		}
 	}
 	fmt.Fprint(out, "return 0;\n}\n")
-	fmt.Fprintf(out, "const %s *%sin=(const %s *)%s;\n%s *%sout=(%s *)%s;\n", in.name, local, in.name, inputPtr, result.name, local, result.name, outputPtr)
+	if len(s.Args) != 0 {
+		fmt.Fprintf(out, "const %s *%sin=(const %s *)%s;\n", in.name, local, in.name, inputPtr)
+	}
+	fmt.Fprintf(out, "%s *%sout=(%s *)%s;\n", result.name, local, result.name, outputPtr)
 	var args []string
 	// Macros are undefined after every argument, so functions share a short
 	// facade-private namespace even when their requested exports have long names.
@@ -117,6 +120,9 @@ func (g *generator) function(out *bytes.Buffer, d clang.Declaration, symbol stri
 		initializer.macros = nil
 		args = append(args, name)
 	}
+	// For entry parameters, the original prototype converts the carrier's void
+	// pointer to its exact native function-pointer type and calling convention.
+	// No reconstructed callback declaration crosses the carrier interface.
 	call := fmt.Sprintf("((__typeof__(&%s))%s)(%s)", d.Name, target, strings.Join(args, ","))
 	if s.Result == abi.Void {
 		fmt.Fprintf(out, "%s;\n", call)
@@ -130,7 +136,7 @@ func (g *generator) function(out *bytes.Buffer, d clang.Declaration, symbol stri
 		}
 	}
 	fmt.Fprint(out, "return 0;\n}\n")
-	return Binding{Name: d.Name, Symbol: symbol, NativeSymbol: d.Symbol, target: g.header.Target, signature: s.Clone(), input: input, output: output, layouts: layouts, words: words}, nil
+	return Binding{Name: d.Name, Symbol: symbol, NativeSymbol: d.Symbol, target: g.header.Target, signature: s.Clone(), pointers: d.FunctionPointers, input: input, output: output, layouts: layouts, words: words}, nil
 }
 
 func (g *generator) copyOutput(out *bytes.Buffer, d abi.TypeDesc, destination, source string, prefix string, depth int) error {

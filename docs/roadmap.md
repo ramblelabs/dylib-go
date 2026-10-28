@@ -162,6 +162,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Direct fixed-scalar/opaque-pointer C cdecl llgo adapters, all primitive widths, native pointer lifetimes and generated runtime execution without libffi.
 - [x] Direct ordinary-record llgo adapters, fixed array fields, native struct pointers and Clang/llgo layout checks without libffi.
 - [x] Direct fixed-cdecl function-pointer parameters/results, native factories and noncapturing same-thread Go entries without libffi.
+- [x] Original-header function-pointer arguments/results, recursive factory/slot metadata and native record-valued/variadic entry calls, with explicit producer/callback leases.
 - [x] Typed scalar/native-address cgo bridges for Go/llgo, concrete variadic shapes with C promotions, native function-pointer prototype forwarding and no-libffi runtime tests.
 - [x] Fixed Windows amd64/386 vectorcall C bridges with explicit compiler guards, decorated symbols, ordinary amd64/GNU 386 records and native factories; Go amd64/386 and llgo amd64 object/archive/library execution. Direct dynamic calls, callbacks, MSVC 386 records and LLVM vector types remain unqualified.
 - [x] Fixed Windows Go 386 stdcall/fastcall cgo bridges, mixed scalars, decorated exports and native function-pointer convention preservation without libffi.

@@ -46,8 +46,10 @@ GCC: that would replace the required matching native compiler with LLVM.
 
 ## Storage and lifetime
 
-`Binding.Signature` returns the original logical signature. `Input` and `Output`
-return independent descriptors for natural C transport storage. `Call` validates
+`Binding.Signature` returns the original logical signature;
+`LookupFunctionPointer` returns an independent recursive entry prototype, including
+result factories and pointer indirection. These describe borrowed addresses, not
+registrations. `Input` and `Output` return independent descriptors for natural C transport storage. `Call` validates
 values, checks the host target and actual facade layout, allocates owned native
 storage, copies arguments, invokes synchronously, reads the result and releases
 all storage. Neither cgo nor libffi is required to generate source; execution
@@ -67,12 +69,19 @@ a metadata capacity mismatch. A nonzero normal-call status wraps `ErrStatus`;
 an invoker error is preserved. Layout queries are bounded to 64 KiB, generation
 to 256 exports, 64 arguments per function and 1 MiB of C source.
 
-Native object/function-pointer fields remain borrowed opaque addresses. Keep
-their allocations, callback leases and producer images alive. Pointer arguments
+Native object/function-pointer arguments, results and fields remain borrowed
+opaque addresses. Keep their allocations, callback leases and producer images alive. Pointer arguments
 and results retain their original native representation; the bridge does not
 turn pointers to logical transport records into pointers to packed native
 records. `abi.AddressOf` temporaries, including nested ones, are rejected.
 Native callees must not retain the facade's temporary input/output storage.
+Keep a producer symbol lease across calls that use returned entries, factories or
+pointer slots. The bridge neither acquires callback registrations nor extends the
+lifetime of unrelated images. A supplied Go callback needs its own callback lease
+until the synchronous consumer returns (or until an explicit registration ends).
+Check the original header target before creating a callback. Prototype metadata
+alone does not qualify a direct ABI backend for attributed record callbacks;
+native entries using those records stay inside the original-header facade.
 
 ## Qualified scope
 
@@ -83,6 +92,7 @@ Native callees must not retain the facade's temporary input/output storage.
 | Producers | Native Clang on every host; native GCC additionally on Linux and macOS |
 | Values | All supported fixed-width integers, Boolean, float/double, native pointers, nested records and multidimensional fixed arrays; const scalar/record/array/bitfield/pointer subobjects use native C17 initialization |
 | Native record ABI | Unnamed nonzero/zero-width bitfields, empty argument lanes, floating prefix/tail gaps, packed/aligned records, large results, exhausted registers and concrete variadic values |
+| Native entries | Record-valued entry parameters/results, higher-order factories, multi-level pointer slots, null entries accepted by the original API and native variadic entry calls; leased scalar Go callbacks additionally with libffi |
 | Compiler packing | Ordinary defaults and `-fpack-struct=1`; natural carriers explicitly restore their own packing scope |
 | Safety | Corrupted layout headers/sizes/alignments/offsets, invoker/native status failures, concurrent queries and retired facade images |
 
@@ -103,8 +113,12 @@ raw-object helper references. Unrelated builtins with unqualified COMDAT forms
 are excluded from this fixture.
 Callers must provide those compiler runtime dependencies for their own objects.
 
-Function-pointer parameters/results need a separate adapter; native pointer
-fields are supported. The original Clang parser's limits still apply, including
+Function-pointer parameters/results are passed through the original C prototype;
+no callback prototype or attributed record declaration is reconstructed in the
+carrier interface. Native entry tests use Clang/GCC at `-O0`/`-O2` through objects,
+archives and shared libraries, with ordinary and globally packed Clang controls.
+Separate libffi tests execute captured Go callbacks through the same facade.
+The original Clang parser's limits still apply, including
 unions without an explicit view, flexible arrays and unsupported scalar types.
 This package supplies neither C++ object/exception handling nor Go callbacks for
 arbitrary native record conventions. Other calling conventions need their own

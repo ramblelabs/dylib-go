@@ -38,6 +38,7 @@ type Binding struct {
 	NativeSymbol  string
 	target        clang.Target
 	signature     abi.Signature
+	pointers      []clang.FunctionPointer
 	input, output abi.TypeDesc
 	layouts       []*transport
 	words         int
@@ -46,6 +47,13 @@ type Binding struct {
 func (b Binding) Input() abi.TypeDesc      { return b.input.Clone() }
 func (b Binding) Output() abi.TypeDesc     { return b.output.Clone() }
 func (b Binding) Signature() abi.Signature { return b.signature.Clone() }
+
+// LookupFunctionPointer returns an independent native entry prototype. Addresses
+// and registrations remain borrowed; this does not create a callback or validate
+// that a direct ABI backend can call a record-valued entry.
+func (b Binding) LookupFunctionPointer(position int) (clang.FunctionPointer, error) {
+	return (clang.Declaration{Signature: b.signature, FunctionPointers: b.pointers}).LookupFunctionPointer(position)
+}
 
 type transport struct {
 	name     string
@@ -66,9 +74,10 @@ type generator struct {
 // and preprocessing inputs must remain the same as during Parse. The original
 // function's __typeof__ supplies its native calling convention in CSource.
 // This supports C17 scalar/native-address/record values, nested arrays, bitfields
-// and concrete variadic tails. Function-pointer parameters/results require a
-// separate adapter. Native arguments use C17 initialization, including const
-// subobjects. This is not a C++ exception or object-lifetime adapter.
+// and concrete variadic tails. Native function-pointer arguments/results remain
+// borrowed addresses, forwarded through the original prototype. Native arguments
+// use C17 initialization, including const subobjects. This is not a C++ exception
+// or object-lifetime adapter.
 // Generation runs no tools and works without cgo. Limits are 256 exports,
 // 64 arguments per export, 64 KiB layout queries and 1 MiB generated source.
 func Generate(header string, declarations *clang.Header, functions []Function) (*Facade, error) {
@@ -102,8 +111,8 @@ func Generate(header string, declarations *clang.Header, functions []Function) (
 		if err != nil {
 			return nil, err
 		}
-		if len(declaration.Signature.Args) > 64 || len(declaration.FunctionPointers) != 0 {
-			return nil, fmt.Errorf("cbridge: %s requires at most 64 arguments and no function-pointer parameters/results", request.Name)
+		if len(declaration.Signature.Args) > 64 {
+			return nil, fmt.Errorf("cbridge: %s requires at most 64 arguments", request.Name)
 		}
 		binding, err := g.function(&bodies, declaration, request.Symbol)
 		if err != nil {
