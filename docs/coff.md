@@ -199,8 +199,9 @@ Large fixtures are genuine Clang output with 33000 and 65540 padding sections, t
 
 Import tests cover all name policies and CODE/DATA/CONST metadata on every host. Windows jobs build a real DLL and `.lib` with Clang/LLD, execute imported functions/data, and test ordinal lookup, export aliases, explicit DLL reuse, moved-library search paths, unused missing DLLs, failed links, and retry. Go and llgo use the same runtime tests; Windows 386 runs Go.
 
-Repeated-section tests use Clang's COFF unique section IDs for two independent
-DLLs, with each table starting at offset zero. Six MSVC/GNU targets cover all
+Repeated-section fixtures compile distinct ordinary sections and then rename
+only their fixed-width section/definition names, preserving indexes and fixups
+with older assemblers too. Two independent DLLs start each table at offset zero. Six MSVC/GNU targets cover all
 ILT-presence combinations, reversed descriptors, retained ordinary/COMDAT code
 and malformed later sections. LLD/PE controls and native Windows object/archive/
 DLL calls qualify function/data/ordinal identity; mixed members also cover lazy

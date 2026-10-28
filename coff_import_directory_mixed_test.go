@@ -113,7 +113,7 @@ func testNativeCOFFImportDirectoryMixed(t *testing.T, omit []bool, repeated bool
 				if err != nil {
 					t.Fatal(err)
 				}
-				imports, _ := coffAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), nil, omit, repeated)+directoryMixedAssembly(target, selection != "ordinary"))
+				imports, _ := coffDirectoryAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), nil, omit, repeated)+directoryMixedAssembly(target, selection != "ordinary"))
 				poison, _ := coffAssembly(t, target, importDirectoryAssembly(target, []directoryFixture{{"not-installed-directory.dll", []longImportFixture{{"poison_directory", "absent", 0, false}}}}))
 				var override string
 				if selection == "discard" {

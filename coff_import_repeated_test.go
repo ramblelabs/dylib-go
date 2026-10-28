@@ -18,7 +18,7 @@ var repeatedImportShapes = append([]struct {
 func repeatedDirectory(t *testing.T, target string, omit []bool) *object {
 	t.Helper()
 	assembly := importDirectoryAssemblyLayout(target, directoryGroups(), nil, omit, true)
-	_, o := coffAssembly(t, target, strings.Replace(assembly, ".idata$2", ".unused2", 1))
+	_, o := coffDirectoryAssembly(t, target, strings.Replace(assembly, ".idata$2", ".unused2", 1))
 	for _, s := range o.sections {
 		if s != nil && s.name == ".unused2" {
 			s.name = ".idata$2"
@@ -51,8 +51,8 @@ func TestCOFFRepeatedImportTables(t *testing.T) {
 						if kind != "pure" {
 							extra = directoryMixedAssembly(target, kind == "comdat")
 						}
-						_, control := coffAssembly(t, target, importDirectoryAssemblyTables(target, directoryGroups(), order, shape.omit)+extra)
-						data, o := coffAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), order, shape.omit, true)+extra)
+						_, control := coffDirectoryAssembly(t, target, importDirectoryAssemblyTables(target, directoryGroups(), order, shape.omit)+extra)
+						data, o := coffDirectoryAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), order, shape.omit, true)+extra)
 						if len(o.info.Unsupported) != 0 || len(o.info.Imports) != 5 || !reflect.DeepEqual(o.info.Imports, control.info.Imports) {
 							t.Fatal("repeated sections changed DLL/name/ordinal identities", o.info, control.info.Imports)
 						}
@@ -186,7 +186,7 @@ func TestCOFFRepeatedImportSystemControl(t *testing.T) {
 	for _, target := range []string{"x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc", "i686-pc-windows-msvc"} {
 		for _, shape := range repeatedImportShapes {
 			t.Run(target+"/"+shape.name, func(t *testing.T) {
-				data, _ := coffAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), []int{1, 0}, shape.omit, true))
+				data, _ := coffDirectoryAssembly(t, target, importDirectoryAssemblyLayout(target, directoryGroups(), []int{1, 0}, shape.omit, true))
 				dir := t.TempDir()
 				imports, source := filepath.Join(dir, "imports.obj"), filepath.Join(dir, "consumer.c")
 				if err := os.WriteFile(imports, data, 0600); err != nil {
