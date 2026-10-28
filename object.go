@@ -102,6 +102,7 @@ type object struct {
 // COFF association is an original section index within the same object.
 type sectionGroup struct {
 	key       string
+	local     bool // A static COFF leader has object scope, never a global key.
 	sections  []int
 	selection uint8 // COFF selections 1..7; ELF COMDAT uses ANY=2.
 	parent    int

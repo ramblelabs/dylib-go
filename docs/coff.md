@@ -157,6 +157,20 @@ An ordinary reference to the same public name follows its weak alias. Fallbacks 
 | LARGEST (6) | Retain the largest section; ties retain input order |
 | NEWEST (7) | Retain the largest COFF header timestamp; ties retain input order |
 
+External leaders use their linkage names for selection across objects. Static
+leaders retain object scope, even when another object has the same private name
+or a public alias follows the leader. The first subsequent definition in the
+section identifies its leader; unrelated section/absolute/undefined records may
+intervene. Qualified leaders are zero-offset external or static definitions.
+
+Leaderless MinGW `.pdata$`, `.xdata$` and `.eh_frame$` COMDATs inherit selection
+from the executable COMDAT with the same section suffix. Matching uses that
+suffix, preserving decorated i386 and private/weak text names. The parent must
+be unique and retained by the parser; missing/ambiguous parents and executable
+unwind metadata are rejected. Explicit associative sections keep their existing
+rules. Discarding a text winner's duplicate also discards its implicit metadata
+and references before dependency discovery and unwind registration.
+
 EXACT_MATCH compares raw contents without comparing relocation targets or alignment, matching [LLD's link.exe-compatible implementation](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/lld/COFF/InputFiles.cpp). Discarded sections and their references never participate in dependency extraction or initialization. Inputs are snapshotted so an unsuccessful link can be retried.
 
 NEWEST is an explicit loader policy for selection value 7; current LLD rejects this value. It uses the unsigned header timestamp, not file modification time or input order. Reproducible objects with equal or zero timestamps retain the first definition. This does not claim that current Microsoft/LLVM toolchains emit NEWEST objects.
@@ -164,6 +178,15 @@ NEWEST is an explicit loader policy for selection value 7; current LLD rejects t
 ## Validation
 
 Clang-generated fixtures inspect all three COFF targets. Tests cover malformed records, alias chains/cycles, strong/native overrides, fallback archive extraction, address and section relocations, equal/unequal EXACT_MATCH content, and timestamp/tie selection. Existing Windows Go and llgo suites execute weak function calls from objects and archives and functions selected by EXACT_MATCH/NEWEST. Windows 386 executes with Go because setup-llgo does not install that architecture.
+
+Private-leader controls compile GNU/MSVC C output at `-O0`/`-O2`, test ordinary
+and promoted bigobj records, and independently link PE DLLs with LLD on all three
+architectures. Windows executes GNU/MSVC private constants through objects,
+reversed inputs, archives and OS-loaded DLL controls, including missing-dependency
+retry and supported raw unwind registration. Small promoted bigobj fixtures
+supplement the genuine high-section bigobj tests below. Compiler-runtime archive
+qualification loads the matching complete Windows builtins archive to resolve
+stack probes, including eagerly parsed, unselected private-COMDAT members.
 
 Large fixtures are genuine Clang output with 33000 and 65540 padding sections, testing ordinary unsigned indexes, bigobj, high associative parents, weak fallback indexes, and archive parsing. Windows native tests call functions from high-section bigobj objects/archives and verify the last of 65536 relocated data pointers. Separate malformed-input tests cover header/UUID/version, sizes and offsets, auxiliary counts, and overflow markers.
 
