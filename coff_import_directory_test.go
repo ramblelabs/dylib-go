@@ -86,8 +86,9 @@ func importDirectoryAssemblyTables(target string, groups []directoryFixture, ord
 }
 
 type directoryLayout struct {
-	repeated               bool
-	timestamps, forwarders []uint32
+	repeated                               bool
+	fragments, separateNull, publicHelpers bool
+	timestamps, forwarders                 []uint32
 }
 
 func (layout directoryLayout) timestamp(group int) uint32 {
@@ -129,19 +130,33 @@ func importDirectoryAssemblyOptions(target string, groups []directoryFixture, or
 		// These leaf import thunks install no exception handlers.
 		text.WriteString(".def @feat.00; .scl 3; .type 0; .endef\n.set @feat.00,1\n")
 	}
-	text.WriteString(".section .idata$2,\"dr\"\n")
+	if !layout.fragments {
+		text.WriteString(".section .idata$2,\"dr\"\n")
+	}
 	if len(order) == 0 {
 		for i := range groups {
 			order = append(order, i)
 		}
 	}
 	for _, i := range order {
+		if layout.fragments {
+			fmt.Fprintf(&text, ".section .id%03d$2,\"dr\"\n", i+1)
+		}
+		if layout.publicHelpers {
+			fmt.Fprintf(&text, ".global directory%d\ndirectory%d:\n", i, i)
+		}
 		if i < len(omit) && omit[i] {
 			text.WriteString(".long 0\n")
 		} else {
 			fmt.Fprintf(&text, ".rva ilt%d\n", i)
 		}
 		fmt.Fprintf(&text, ".long %d,%d\n.rva dll%d\n.rva iat%d\n", layout.timestamp(i), layout.forwarder(i), i, i)
+	}
+	if layout.separateNull {
+		text.WriteString(".section .idata$3,\"dr\"\n")
+	}
+	if layout.publicHelpers {
+		text.WriteString(".global directory_end\ndirectory_end:\n")
 	}
 	text.WriteString(".zero 20\n")
 	word := ".quad 0\n"
@@ -173,7 +188,11 @@ func importDirectoryAssemblyOptions(target string, groups []directoryFixture, or
 			part.WriteString(".section .idata$4,\"dr\"\n" + word)
 		}
 		part.WriteString(".section .idata$5,\"dr\"\n" + word)
-		fmt.Fprintf(&part, ".section .idata$7,\"dr\"\ndll%d:\n.asciz %q\n", i, group.dll)
+		part.WriteString(".section .idata$7,\"dr\"\n")
+		if layout.publicHelpers {
+			fmt.Fprintf(&part, ".global dll%d\n", i)
+		}
+		fmt.Fprintf(&part, "dll%d:\n.asciz %q\n", i, group.dll)
 		body := part.String()
 		if layout.repeated {
 			// Older assemblers cannot spell repeated ordinary COFF sections.
@@ -200,7 +219,7 @@ func coffDirectoryAssembly(t *testing.T, target, assembly string) ([]byte, *obje
 	renamed := make(map[int]string)
 	for i, sec := range input.sections {
 		name := sec.name
-		if len(name) != 8 || !strings.HasPrefix(name, ".id") || name[6] != '$' || name[7] < '4' || name[7] > '7' {
+		if len(name) != 8 || !strings.HasPrefix(name, ".id") || name[6] != '$' || name[7] < '2' || name[7] > '7' {
 			continue
 		}
 		if name[3] < '0' || name[3] > '9' || name[4] < '0' || name[4] > '9' || name[5] < '0' || name[5] > '9' {

@@ -12,17 +12,19 @@ import (
 // Cached bound addresses are discarded in favor of a complete ILT. The decoder
 // never executes cached IAT values or implements the PE loader's delay state.
 type coffImportDirectory struct {
-	graph    coffImportGraph
-	o        *object
-	indexes  map[string]int
-	template map[int]bool
-	sites    map[coffImportSite]relocation
-	used     map[coffImportSite]bool
-	occupied map[coffImportSite]bool
-	rows     map[coffImportSite]*coffDirectoryEntry
-	entries  []*coffDirectoryEntry
-	width    uint64
-	budget   int
+	graph       coffImportGraph
+	o           *object
+	indexes     map[string]int
+	directories []int
+	template    map[int]bool
+	helpers     map[coffImportSite]bool
+	sites       map[coffImportSite]relocation
+	used        map[coffImportSite]bool
+	occupied    map[coffImportSite]bool
+	rows        map[coffImportSite]*coffDirectoryEntry
+	entries     []*coffDirectoryEntry
+	width       uint64
+	budget      int
 }
 
 type coffDirectoryEntry struct {
@@ -36,7 +38,7 @@ type coffDirectoryEntry struct {
 func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 	d := coffImportDirectory{graph: g, o: o, width: uint64(o.info.Bits / 8), budget: maxFile,
 		indexes: make(map[string]int), template: make(map[int]bool), sites: make(map[coffImportSite]relocation),
-		used: make(map[coffImportSite]bool), occupied: make(map[coffImportSite]bool), rows: make(map[coffImportSite]*coffDirectoryEntry)}
+		used: make(map[coffImportSite]bool), helpers: make(map[coffImportSite]bool), occupied: make(map[coffImportSite]bool), rows: make(map[coffImportSite]*coffDirectoryEntry)}
 	if o.info.Format != "COFF" || d.width != 4 && d.width != 8 {
 		return nil, false
 	}
@@ -45,8 +47,8 @@ func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 			continue
 		}
 		switch sec.name {
-		case ".text", ".idata$2", ".idata$4", ".idata$5", ".idata$6", ".idata$7":
-			if (sec.name == ".text" || sec.name == ".idata$2") && d.indexes[sec.name] != 0 {
+		case ".text", ".idata$2", ".idata$3", ".idata$4", ".idata$5", ".idata$6", ".idata$7":
+			if (sec.name == ".text" || sec.name == ".idata$3") && d.indexes[sec.name] != 0 {
 				return nil, false
 			}
 			if uint64(len(sec.data)) != sec.size || sec.lifecycle != 0 || sec.nativeTLS != 0 || sec.exec && sec.name != ".text" {
@@ -56,6 +58,9 @@ func (g coffImportGraph) convertDirectory(o *object) (*object, bool) {
 				d.indexes[sec.name] = i
 			}
 			d.template[i] = true
+			if sec.name == ".idata$2" {
+				d.directories = append(d.directories, i)
+			}
 		default:
 			if strings.HasPrefix(sec.name, ".idata") {
 				return nil, false
@@ -149,56 +154,91 @@ func (d *coffImportDirectory) reference(section int, offset uint64) (coffLocatio
 }
 
 func (d *coffImportDirectory) directory() bool {
-	index := d.indexes[".idata$2"]
-	sec := d.o.sections[index]
-	if sec.size < 40 || sec.size%20 != 0 || sec.size/20 > 65537 {
-		return false
+	null := d.indexes[".idata$3"]
+	if null != 0 {
+		sec := d.o.sections[null]
+		if sec.size != 20 || sec.align > 4 || !allZero(sec.data) {
+			return false
+		}
+		d.helpers[coffImportSite{null, 0}] = true
 	}
-	for offset := uint64(0); offset < sec.size; offset += 20 {
-		bytes := sec.data[offset : offset+20]
-		_, lookupRelocation := d.sites[coffImportSite{index, offset}]
-		_, nameRelocation := d.sites[coffImportSite{index, offset + 12}]
-		_, addressRelocation := d.sites[coffImportSite{index, offset + 16}]
-		if allZero(bytes) && !lookupRelocation && !nameRelocation && !addressRelocation {
-			return len(d.entries) != 0 && allZero(sec.data[offset:])
-		}
-		bound := !allZero(bytes[4:8])
-		if !bound && !allZero(bytes[8:12]) {
+	count, terminated := uint64(0), false
+	for part, index := range d.directories {
+		sec := d.o.sections[index]
+		// Larger contribution alignment can insert padding between native
+		// descriptors. Do not silently compose a different directory.
+		if (len(d.directories) > 1 || null != 0) && sec.align > 4 {
 			return false
 		}
-		iat, yes := d.reference(index, offset+16)
-		name, named := d.reference(index, offset+12)
-		if !yes || !named || !d.section(iat.section, ".idata$5") {
+		if sec.size < 20 || sec.size%20 != 0 || sec.size/20 > 65537-count {
 			return false
 		}
-		// An unbound IAT contains the lookup entries when OriginalFirstThunk
-		// is absent. A nonzero field or any relocation must still identify an
-		// actual ILT; a malformed lookup reference must never become a fallback.
-		ilt := iat
-		if bound && !lookupRelocation {
-			return false // A cached address is never an import lookup entry.
-		}
-		if lookupRelocation || !allZero(bytes[:4]) {
-			var ok bool
-			ilt, ok = d.reference(index, offset)
-			if !ok || !d.section(ilt.section, ".idata$4") {
+		count += sec.size / 20
+		for offset := uint64(0); offset < sec.size; offset += 20 {
+			bytes := sec.data[offset : offset+20]
+			_, lookup := d.sites[coffImportSite{index, offset}]
+			_, name := d.sites[coffImportSite{index, offset + 12}]
+			_, address := d.sites[coffImportSite{index, offset + 16}]
+			if allZero(bytes) && !lookup && !name && !address {
+				// Linkers concatenate .idata$2 contributions in input order and
+				// place .idata$3 after them. A null cannot hide a later descriptor.
+				if null != 0 || part != len(d.directories)-1 || !allZero(sec.data[offset:]) {
+					return false
+				}
+				d.helpers[coffImportSite{index, offset}] = true
+				terminated = true
+				break
+			}
+			if !d.descriptor(index, offset) {
 				return false
 			}
 		}
-		nativeName := d.o.sections[name.section].name
-		if nativeName != ".idata$6" && nativeName != ".idata$7" {
-			return false
-		}
-		dll, ok := name.name(0)
-		if !ok {
-			return false
-		}
-		dll, err := coffDLLName(dll)
-		if err != nil || !d.table(ilt, iat, dll, bound) {
+	}
+	return len(d.entries) != 0 && (terminated || null != 0 && count <= 65536)
+}
+
+func (d *coffImportDirectory) descriptor(index int, offset uint64) bool {
+	sec := d.o.sections[index]
+	bytes := sec.data[offset : offset+20]
+	_, lookupRelocation := d.sites[coffImportSite{index, offset}]
+	bound := !allZero(bytes[4:8])
+	if !bound && !allZero(bytes[8:12]) {
+		return false
+	}
+	iat, yes := d.reference(index, offset+16)
+	name, named := d.reference(index, offset+12)
+	if !yes || !named || !d.section(iat.section, ".idata$5") {
+		return false
+	}
+	// An unbound IAT contains the lookup entries when OriginalFirstThunk
+	// is absent. A nonzero field or any relocation must still identify an
+	// actual ILT; a malformed lookup reference must never become a fallback.
+	ilt := iat
+	if bound && !lookupRelocation {
+		return false // A cached address is never an import lookup entry.
+	}
+	if lookupRelocation || !allZero(bytes[:4]) {
+		var ok bool
+		ilt, ok = d.reference(index, offset)
+		if !ok || !d.section(ilt.section, ".idata$4") {
 			return false
 		}
 	}
-	return false // An explicit null descriptor terminates the bounded directory.
+	nativeName := d.o.sections[name.section].name
+	if nativeName != ".idata$6" && nativeName != ".idata$7" {
+		return false
+	}
+	dll, ok := name.name(0)
+	if !ok {
+		return false
+	}
+	dll, err := coffDLLName(dll)
+	if err != nil || !d.table(ilt, iat, dll, bound) {
+		return false
+	}
+	d.helpers[coffImportSite{index, offset}] = true
+	d.helpers[coffImportSite{name.section, name.offset}] = true
+	return true
 }
 
 func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string, bound bool) bool {
@@ -288,6 +328,9 @@ func (d *coffImportDirectory) symbols() bool {
 			return false
 		}
 		names[s.name] = true
+		if d.helpers[coffImportSite{s.section, s.value}] {
+			continue // Public labels are metadata, never exposed native addresses.
+		}
 		if d.section(s.section, ".idata$5") {
 			row := d.rows[coffImportSite{s.section, s.value}]
 			if row == nil {
@@ -314,6 +357,9 @@ func (d *coffImportDirectory) symbols() bool {
 	}
 	for _, s := range d.o.symbols {
 		if !s.global || !d.template[s.section] {
+			continue
+		}
+		if d.helpers[coffImportSite{s.section, s.value}] {
 			continue
 		}
 		row := d.rows[coffImportSite{s.section, s.value}]
