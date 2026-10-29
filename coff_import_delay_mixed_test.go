@@ -15,11 +15,11 @@ func delayMixedAssembly(target string, comdat bool) string {
 	if comdat {
 		text = mixedCOMDATImportAssembly(target)
 	}
-	prefix, word := "", ".quad "
+	prefix, word, alignment := "", ".quad ", "3"
 	if strings.HasPrefix(target, "i686") {
-		prefix, word = "_", ".long "
+		prefix, word, alignment = "_", ".long ", "2"
 	}
-	return text + ".section .rdata$mixiat,\"dr\"\n.global " + prefix + "mixed_import_address\n" + prefix + "mixed_import_address:\n" + word + "__imp_" + prefix + "add\n"
+	return text + ".section .rdata$mixiat,\"dr\"\n.p2align " + alignment + "\n.global " + prefix + "mixed_import_address\n" + prefix + "mixed_import_address:\n" + word + "__imp_" + prefix + "add\n"
 }
 
 func TestCOFFDelayMixed(t *testing.T) {
