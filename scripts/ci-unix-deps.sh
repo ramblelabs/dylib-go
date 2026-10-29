@@ -4,7 +4,7 @@ set -euo pipefail
 case "$(uname -s)" in
   Linux)
     sudo apt-get update
-    sudo apt-get install -y clang clang-19 llvm binutils libffi-dev pkg-config gfortran
+    sudo apt-get install -y clang clang-19 lld llvm binutils libffi-dev pkg-config gfortran
     # Clang 18 has incompatible SysV lowering for aligned scalar typedefs.
     # Keep the baseline compiler; qualify this fixture with the fixed release.
     echo 'DYLIB_TYPEDEF_CLANG=clang-19' >> "$GITHUB_ENV"

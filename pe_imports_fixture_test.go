@@ -4,6 +4,7 @@ import (
 	"debug/pe"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -87,6 +88,14 @@ func peFixtureSection(t *testing.T, f peImportFixture, name string) *pe.Section 
 
 func buildPEImportFixture(t *testing.T, target, opt, shape string) peImportFixture {
 	t.Helper()
+	for _, tool := range []string{"lld-link", "llvm-ar", "llvm-readobj"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			if os.Getenv("DYLIB_TEST_REQUIRE_NATIVE") == "1" {
+				t.Fatalf("required native PE producer %s unavailable: %v", tool, err)
+			}
+			t.Skipf("optional PE producer %s unavailable; peinfo unit/seed tests need no tools", tool)
+		}
+	}
 	dir := t.TempDir()
 	machine := uint16(0x8664)
 	prefix := ""
