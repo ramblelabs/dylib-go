@@ -57,7 +57,8 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Repeated same-name IAT/ILT/hint/DLL-name sections, section-scoped row identity, optional lookup tables and retained mixed ordinary/COMDAT code, with independent PE controls and native Windows calls.
 - [x] Eager rebinding of descriptor-qualified bound IAT caches through complete ILTs, including mixed/repeated tables, stale cache metadata and native Windows object/archive/DLL calls.
 - [x] Same-object split COFF descriptor contributions, separate null sections and metadata-only global labels, including bound caches, optional ILTs, independent PE controls and native Windows calls.
-- [ ] Cross-object descriptor composition, full bound-import-directory metadata and delay import tables.
+- [x] Explicit cross-object COFF descriptor/lookup/name/IAT composition within one archive or staged object set, atomic member selection, retained ordinary COMDAT/lifecycle code, independent PE controls and native Windows calls.
+- [ ] Unconnected/cross-archive metadata composition, full bound-import-directory metadata and delay import tables.
 - [x] Mach-O external `N_INDR` forwarding aliases, chains, archive dependencies, and native macOS object/archive calls.
 - [x] Mach-O eager indirect pointer binding, local/absolute markers, and standard amd64/arm64 stubs with native scalar/large-record calls.
 - [x] ELF amd64 SIZE32/SIZE64 and i386 SIZE32, selected weak/strong/common sizes, archive dependencies, and native Linux calls.

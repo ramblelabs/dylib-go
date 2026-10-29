@@ -10,8 +10,9 @@ import (
 // without laying out or executing the native import tables. Verified templates
 // may coexist with ordinary sections; other .idata objects remain unsupported.
 type coffImportGraph struct {
-	defs map[string][]definition
-	dlls map[coffLocation]string // Per-conversion cache for combined import members.
+	defs       map[string][]definition
+	dlls       map[coffLocation]string // Per-conversion cache for combined import members.
+	components *coffImportComponents
 }
 
 type coffLocation struct {
@@ -21,7 +22,7 @@ type coffLocation struct {
 }
 
 func newCOFFImportGraph(objects []*object) coffImportGraph {
-	g := coffImportGraph{defs: make(map[string][]definition)}
+	g := coffImportGraph{defs: make(map[string][]definition), components: &coffImportComponents{objects: objects}}
 	for _, o := range objects {
 		if o.info.Format != "COFF" {
 			continue
@@ -88,6 +89,12 @@ func (p coffLocation) name(skip uint64) (string, bool) {
 func (g coffImportGraph) convert(o *object) (*object, bool) {
 	if o.info.Format != "COFF" {
 		return nil, false
+	}
+	if g.components != nil {
+		g.components.prepare(g)
+		if converted := g.components.converted[o]; converted != nil {
+			return converted, true
+		}
 	}
 	candidate := false
 	for _, s := range o.symbols {

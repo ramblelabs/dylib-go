@@ -129,14 +129,14 @@ select a provider. Every lookup/address section is checked for unused nonzero
 bytes and fixups, including sections not referenced by a descriptor.
 
 Global labels may identify validated descriptor starts, the null descriptor or
-DLL-name starts. They are metadata-only and disappear during conversion; they
+DLL-name, ILT or hint/name record starts. They are metadata-only and disappear during conversion; they
 do not expose native table addresses. Ordinary code/data relocations referencing
 them still prevent conversion. Labels inside records/strings, unknown metadata
 fixups, grouped metadata and malformed later fragments also prevent conversion
 without changing the original object.
 
 This form requires at most one import `.text` section and self-contained metadata
-references. Cross-object descriptor composition, full bound-import-directory metadata,
+references. The bounded cross-object extension is described below. Full bound-import-directory metadata,
 delay imports, auto-import/pseudo-relocations and arbitrary inline code remain
 unqualified.
 Complete DLLs continue to use the OS loader for those native table layouts.
@@ -167,6 +167,47 @@ lookup/name sections, metadata-only global labels, bound caches and absent ILTs.
 Independent PE controls consume the original object bytes for AMD64/ARM64/i386.
 Windows Go/llgo calls exercise objects, lazy archives and OS-linked DLLs, plus
 mixed ordinary/COMDAT lifecycle selection and failed-dependency retry.
+
+## Cross-object directories
+
+A descriptor-qualified directory can span multiple COFF objects in one archive,
+or multiple raw objects staged in the same session. Explicit global metadata
+references connect the members; definitions must be unique for the target
+architecture. Descriptors, ILTs, hint/DLL names, terminated IATs and import thunks
+may belong to different members. A null section must belong to this connected
+component. Unconnected terminators and unrelated archive order are never used to
+infer a missing directory boundary.
+
+The Go decoder builds a bounded temporary view and applies the same directory,
+row, relocation and exact-thunk validation described above. Only recognized
+thunk text is joined for validation. Projection preserves each original member's
+section/symbol indices, ordinary sections, COMDAT rules and lifecycle entries.
+Global ILT/hint labels identify validated starts and disappear with the other
+metadata helpers; IAT aliases keep the existing owned-slot semantics. Ordinary
+references to removed helpers prevent conversion or remain unresolved.
+
+Selecting any member of a validated component selects the whole component.
+This retains ordinary code/data and initialization/finalization in metadata
+providers, and binds every declared DLL import. Other components remain lazy,
+including unused components naming missing DLLs. Failed ordinary dependencies
+permit retry before initialization. Unsupported features retain their member's
+diagnostics and fail before DLL binding. Component validation budgets section
+data, names and bookkeeping within the existing 256 MiB input limit.
+
+`Load` accepts incomplete canonical raw COFF import metadata so its providers can
+be staged later. `Link` composes and validates the complete set before opening
+DLLs. Staged bytes remain snapshots if a source file is removed. `Inspect` can
+compose an archive; a standalone fragment retains its unsupported marker.
+Composition does not borrow metadata from another archive or mix archive
+members with separately staged raw fragments. Arbitrary code sharing the import
+`.text`, full bound directories and delay imports remain unqualified.
+
+Tests cover MSVC/GNU AMD64/ARM64/i386, input order, multiple IAT/thunk owners,
+bigobj, optional ILTs, bound caches, malformed later members, immutable failure
+and atomic lazy selection. Independent LLD/PE controls consume the original
+multi-object inputs. Windows Go/llgo tests execute raw sets, archives and native
+DLL controls, including partial staging/source deletion, unused missing-DLL
+components and ordinary/COMDAT provider lifecycle plus dependency retry.
 
 ## Weak externals
 

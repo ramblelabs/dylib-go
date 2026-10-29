@@ -129,7 +129,7 @@ func TestCOFFImportDirectoryValidation(t *testing.T) {
 					o.symbols = append(o.symbols, symbol{name: "__imp_other", section: iat, global: true})
 				}},
 				{"metadata_export", func(o *object) {
-					o.symbols = append(o.symbols, symbol{name: "metadata_export", section: hint, global: true})
+					o.symbols = append(o.symbols, symbol{name: "metadata_export", section: hint, value: 1, global: true})
 				}},
 				{"duplicate_fixup", func(o *object) { o.relocs = append(o.relocs, *directoryRelocation(t, o, dir, 0)) }},
 				{"extra_metadata_fixup", func(o *object) {

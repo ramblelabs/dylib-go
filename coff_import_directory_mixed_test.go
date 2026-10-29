@@ -80,6 +80,10 @@ func testNativeCOFFImportDirectoryMixed(t *testing.T, omit []bool, repeated bool
 }
 
 func testNativeCOFFImportDirectoryMixedLayout(t *testing.T, omit []bool, layout directoryLayout) {
+	testNativeCOFFImportDirectoryMixedComponent(t, omit, layout, nil)
+}
+
+func testNativeCOFFImportDirectoryMixedComponent(t *testing.T, omit []bool, layout directoryLayout, component *componentDirectoryShape) {
 	t.Helper()
 	if runtime.GOOS != "windows" {
 		t.Skip("native import directories require Windows")
@@ -118,7 +122,17 @@ func testNativeCOFFImportDirectoryMixedLayout(t *testing.T, omit []bool, layout 
 					t.Fatal(err)
 				}
 				imports, _ := coffDirectoryAssembly(t, target, importDirectoryAssemblyOptions(target, directoryGroups(), nil, omit, layout)+directoryMixedAssembly(target, selection != "ordinary"))
+				componentParts := [][]byte{imports}
+				if component != nil {
+					componentParts, _ = componentImportParts(t, target, *component, directoryMixedAssembly(target, selection != "ordinary"), false)
+				}
 				poison, _ := coffAssembly(t, target, importDirectoryAssembly(target, []directoryFixture{{"not-installed-directory.dll", []longImportFixture{{"poison_directory", "absent", 0, false}}}}))
+				poisonParts := [][]byte{poison}
+				if component != nil {
+					unused := *component
+					unused.namespace = "missing_"
+					poisonParts, _ = componentImportParts(t, target, unused, "", false)
+				}
 				var override string
 				if selection == "discard" {
 					key := "mixed_bias"
@@ -139,18 +153,19 @@ func testNativeCOFFImportDirectoryMixedLayout(t *testing.T, omit []bool, layout 
 						call(t, observer, "events", 1, 0, 0)
 						s := New(Options{})
 						defer s.Close()
+						root := "mixed"
+						if component != nil {
+							root = "first"
+						}
 						if override != "" {
 							load(t, s, override)
 						}
 						path := filepath.Join(dir, mode+".lib")
 						if mode == "object" {
-							path = filepath.Join(dir, "mixed.obj")
-							if err := os.WriteFile(path, imports, 0600); err != nil {
-								t.Fatal(err)
-							}
-							load(t, s, path, dependency)
+							paths := writeComponentObjects(t, dir, componentParts)
+							load(t, s, append(paths, dependency)...)
 						} else {
-							parts := [][]byte{imports, poison}
+							parts := append(append([][]byte{}, componentParts...), poisonParts...)
 							if mode == "archive" {
 								parts = append(parts, dependent)
 							}
@@ -160,13 +175,13 @@ func testNativeCOFFImportDirectoryMixedLayout(t *testing.T, omit []bool, layout 
 							load(t, s, path)
 						}
 						if mode == "retry" {
-							if err := s.Link("mixed"); err == nil || !strings.Contains(err.Error(), "dependency") || s.image != nil {
+							if err := s.Link(root); err == nil || !strings.Contains(err.Error(), "dependency") || s.image != nil {
 								t.Fatal("expected unpublished dependency failure", err)
 							}
 							call(t, observer, "events", 0, 0, 0)
 							load(t, s, dependency)
 						}
-						if err := s.Link("mixed"); err != nil {
+						if err := s.Link(root); err != nil {
 							t.Fatal(err)
 						}
 						count, read := int32(1), int32(62)
