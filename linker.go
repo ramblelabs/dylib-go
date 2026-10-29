@@ -169,7 +169,7 @@ func (s *Session) Load(path string) error {
 	case "archive":
 		s.files = append(s.files, f)
 	case "object":
-		if err = checkTarget(f.obj); err != nil {
+		if err = checkCOFFImportStage(f.obj); err != nil {
 			return err
 		}
 		s.files = append(s.files, f)
@@ -394,7 +394,14 @@ func (s *Session) selectObjects(roots []string) ([]*object, error) {
 		}
 	}
 	used := map[*object]bool{}
+	imports := newCOFFImportGraph(objs)
+	for i, o := range objs {
+		if converted, ok := imports.convert(o); ok {
+			objs[i] = converted
+		}
+	}
 	for {
+		objs = expandCOFFImportGroups(objs, used)
 		selected, err := coalesceObjects(objs)
 		if err != nil {
 			return nil, err
@@ -552,6 +559,11 @@ func (s *Session) link(roots []string) error {
 	objs, err := s.selectObjects(roots)
 	if err != nil {
 		return err
+	}
+	for _, o := range objs {
+		if err := checkTarget(o); err != nil {
+			return err
+		}
 	}
 	// Selection returns private snapshots, including COMDAT discard decisions.
 	defs, err := definitions(objs)

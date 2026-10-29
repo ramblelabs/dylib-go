@@ -35,6 +35,10 @@ func directoryControl(t *testing.T, target, output, imports, consumer string) {
 }
 
 func linkDirectoryControl(t *testing.T, target, output, imports, consumer string) {
+	linkDirectoryInputs(t, target, output, []string{imports}, consumer)
+}
+
+func linkDirectoryInputs(t *testing.T, target, output string, imports []string, consumer string) {
 	t.Helper()
 	machine := "X64"
 	if strings.HasPrefix(target, "aarch64") {
@@ -43,7 +47,10 @@ func linkDirectoryControl(t *testing.T, target, output, imports, consumer string
 	if strings.HasPrefix(target, "i686") {
 		machine = "X86"
 	}
-	command(t, "lld-link", "/dll", "/noentry", "/nodefaultlib", "/machine:"+machine, "/out:"+output, "/export:directory_imported", imports, consumer)
+	args := []string{"/dll", "/noentry", "/nodefaultlib", "/machine:" + machine, "/out:" + output, "/export:directory_imported"}
+	args = append(args, imports...)
+	args = append(args, consumer)
+	command(t, "lld-link", args...)
 }
 
 func TestCOFFImportDirectorySystemControl(t *testing.T) {
@@ -333,6 +340,10 @@ func testNativeCOFFImportDirectory(t *testing.T, omit []bool, repeated bool) {
 }
 
 func testNativeCOFFImportDirectoryLayout(t *testing.T, omit []bool, layout directoryLayout) {
+	testNativeCOFFImportDirectoryComponent(t, omit, layout, nil)
+}
+
+func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout directoryLayout, component *componentDirectoryShape) {
 	t.Helper()
 	if runtime.GOOS != "windows" {
 		t.Skip("native DLL imports require Windows")
@@ -362,12 +373,21 @@ func testNativeCOFFImportDirectoryLayout(t *testing.T, omit []bool, layout direc
 	}
 	target := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH] + "-w64-windows-gnu"
 	imports, _ := coffDirectoryAssembly(t, target, importDirectoryAssemblyOptions(target, directoryGroups(), []int{1, 0}, omit, layout))
-	obj := filepath.Join(dir, "directory.obj")
-	if err := os.WriteFile(obj, imports, 0600); err != nil {
-		t.Fatal(err)
+	parts := [][]byte{imports}
+	if component != nil {
+		parts, _ = componentImportParts(t, target, *component, "", false)
 	}
+	paths := writeComponentObjects(t, dir, parts)
+	obj := paths[0]
 	archive := filepath.Join(dir, "directory.lib")
-	if err := os.WriteFile(archive, longImportArchive([][]byte{imports}), 0600); err != nil {
+	archiveParts := append([][]byte{}, parts...)
+	if component != nil {
+		poison := *component
+		poison.namespace = "missing_"
+		unused, _ := componentImportParts(t, target, poison, "", false)
+		archiveParts = append(archiveParts, unused...)
+	}
+	if err := os.WriteFile(archive, longImportArchive(archiveParts), 0600); err != nil {
 		t.Fatal(err)
 	}
 	source := filepath.Join(dir, "consumer.c")
@@ -377,7 +397,10 @@ func testNativeCOFFImportDirectoryLayout(t *testing.T, omit []bool, layout direc
 	for _, opt := range []string{"-O0", "-O2"} {
 		consumer := compile(t, source, source+opt+".obj", "--target="+target, opt)
 		control := filepath.Join(dir, "control"+opt+".dll")
-		if len(layout.timestamps) != 0 {
+		if component != nil {
+			linkDirectoryInputs(t, target, control, paths, consumer)
+			checkBoundDirectoryControl(t, target, control, layout, []int{1, 0})
+		} else if len(layout.timestamps) != 0 {
 			linkDirectoryControl(t, target, control, obj, consumer)
 			checkBoundDirectoryControl(t, target, control, layout, []int{1, 0})
 		} else if len(omit) == 0 {
@@ -402,7 +425,22 @@ func testNativeCOFFImportDirectoryLayout(t *testing.T, omit []bool, layout direc
 					call(t, s, "directory_imported", 20, 22, 2252)
 					return
 				}
-				load(t, s, input, consumer)
+				if component != nil && kind == "object" {
+					stage := filepath.Join(t.TempDir(), "staged.obj")
+					if err := os.WriteFile(stage, parts[0], 0600); err != nil {
+						t.Fatal(err)
+					}
+					load(t, s, stage)
+					if err := s.Link("first"); err == nil || s.image != nil || len(s.libs) != 0 {
+						t.Fatal("incomplete component published or opened DLLs", err)
+					}
+					if err := os.Remove(stage); err != nil {
+						t.Fatal(err)
+					}
+					load(t, s, append(paths[1:], consumer)...)
+				} else {
+					load(t, s, input, consumer)
+				}
 				if err := s.Link("directory_imported", "first", "second", "numbered"); err != nil {
 					t.Fatal(err)
 				}

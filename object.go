@@ -96,6 +96,7 @@ type object struct {
 	relocs                  []relocation
 	groups                  []sectionGroup
 	machoAtoms              []machoCoalescedAtom // Proven weak subsections; immutable across link attempts.
+	coffImportGroup         []*object            // A validated cross-object directory is selected atomically.
 }
 
 // ELF COMDAT groups and COFF COMDAT sections share selection and discard rules.

@@ -245,6 +245,9 @@ func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string, bound boo
 	if ilt.offset%d.width != 0 || iat.offset%d.width != 0 {
 		return false
 	}
+	if ilt != iat {
+		d.helpers[coffImportSite{ilt.section, ilt.offset}] = true
+	}
 	count := 0
 	for ; count <= len(d.o.symbols); count++ {
 		if ilt.offset > d.o.sections[ilt.section].size || d.width > d.o.sections[ilt.section].size-ilt.offset ||
@@ -304,6 +307,7 @@ func (d *coffImportDirectory) table(ilt, iat coffLocation, dll string, bound boo
 				return false
 			}
 			entry.imported.name, entry.info.Name = name, name
+			d.helpers[coffImportSite{first.section, first.offset}] = true
 		}
 		cost := len(dll) + len(entry.imported.name)
 		if cost > d.budget {
