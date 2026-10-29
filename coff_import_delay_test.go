@@ -16,6 +16,10 @@ type delayFixtureEntry struct {
 }
 
 func delayFixtureParts(t *testing.T, target string, entries []delayFixtureEntry) ([][]byte, []*object) {
+	return delayFixturePartsExtra(t, target, entries, "")
+}
+
+func delayFixturePartsExtra(t *testing.T, target string, entries []delayFixtureEntry, extra string) ([][]byte, []*object) {
 	t.Helper()
 	prefix, word, feat := "", ".quad", ""
 	if strings.HasPrefix(target, "i686") {
@@ -46,7 +50,7 @@ func delayFixtureParts(t *testing.T, target string, entries []delayFixtureEntry)
 	b, o := coffAssembly(t, target, feat+text)
 	parts := [][]byte{b}
 	objects := []*object{o}
-	for _, e := range entries {
+	for index, e := range entries {
 		pub, imp := prefix+e.public, "__imp_"+prefix+e.public
 		body := ".text\n.global " + pub + "\n" + pub + ":\n"
 		switch {
@@ -72,6 +76,9 @@ func delayFixtureParts(t *testing.T, target string, entries []delayFixtureEntry)
 			body += ".section .idata$6,\"dr\"\nhint:\n.short 0\n.asciz \"" + e.name + "\"\n"
 		}
 		body += ".section .idata$7,\"dr\"\n"
+		if index == 0 {
+			body += extra
+		}
 		b, o = coffAssembly(t, target, feat+body)
 		parts = append(parts, b)
 		objects = append(objects, o)

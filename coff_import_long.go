@@ -103,14 +103,7 @@ func (g coffImportGraph) convert(o *object) (*object, bool) {
 			return converted, true
 		}
 	}
-	candidate := false
-	for _, s := range o.symbols {
-		if s.global && s.section > 0 && s.section < len(o.sections) && o.sections[s.section] != nil && o.sections[s.section].name == ".idata$5" && strings.HasPrefix(s.name, "__imp_") {
-			candidate = true
-			break
-		}
-	}
-	if !candidate {
+	if !coffImportCandidate(o) {
 		return nil, false
 	}
 
@@ -121,6 +114,15 @@ func (g coffImportGraph) convert(o *object) (*object, bool) {
 		return converted, true
 	}
 	return g.convertDirectory(o)
+}
+
+func coffImportCandidate(o *object) bool {
+	for _, s := range o.symbols {
+		if s.global && s.section > 0 && s.section < len(o.sections) && o.sections[s.section] != nil && o.sections[s.section].name == ".idata$5" && strings.HasPrefix(s.name, "__imp_") {
+			return true
+		}
+	}
+	return false
 }
 
 func coffImportSections(o *object) (map[string]int, bool) {

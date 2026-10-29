@@ -105,10 +105,17 @@ arguments, struct values/results/pointers and variadic doubles at `-O0`/`-O2`;
 rejection, unused members and file removal after staging are covered. Independent
 system-linked controls execute the original fallback and a compiled C resolver
 to check the same results. Genuine GNU archives also execute on amd64/386.
+Mixed-member tests additionally exercise ordinary and COMDAT code/data/BSS,
+retained/discarded associative lifecycle entries, separate archive providers,
+dependency retry without initialization and unused members with default policy.
 See [fixture provenance and regeneration](../testdata/coffdelay/README.md).
 
-This subset requires one function per pure stub and unique bounded helper
-providers. Mixed ordinary delay members, imported data, auxiliary bound/unload
+This subset requires one function per stub and unique bounded helper
+providers. Stub members may retain ordinary code in separate text sections,
+data/BSS, COMDAT groups, dependencies and initialization/finalization records.
+The same mixed-member overlay preserves original indices and rejects ordinary
+references into private thunk/table storage. Helpers remain metadata-only.
+Imported data, auxiliary bound/unload
 tables, nonzero timestamps, legacy VA descriptors, other resolver/thunk shapes,
 and full lazy execution remain unsupported. ARM64 uses compatible assembler
 controls; no GNU ARM64 delay-archive producer is qualified.
@@ -263,9 +270,11 @@ initialization and destruction.
 be staged later. `Link` composes and validates the complete set before opening
 DLLs. Staged bytes remain snapshots if a source file is removed. `Inspect` can
 compose an archive; a standalone fragment retains its unsupported marker.
-Composition does not borrow metadata from another archive or mix archive
-members with separately staged raw fragments. Arbitrary code sharing the import
-`.text`, full bound directories and delay imports remain unqualified.
+Composition uses only unique, explicitly referenced metadata providers; physical
+proximity and unconnected archive members cannot supply a missing boundary.
+Arbitrary code sharing the import `.text` and full bound directories remain
+unqualified. The separate [delay-import subset](#raw-delay-imports) requires
+explicit eager policy.
 
 Tests cover MSVC/GNU AMD64/ARM64/i386, input order, multiple IAT/thunk owners,
 bigobj, optional ILTs, bound caches, malformed later members, immutable failure
