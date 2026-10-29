@@ -6,6 +6,10 @@ import "strings"
 // ordinary sections and their original symbol indices. Only template sections
 // may disappear; no code, data or lifecycle section is treated as metadata.
 func (g coffImportGraph) convertMixed(o *object) (*object, bool) {
+	return g.convertMixedUsing(o, g.convertPure)
+}
+
+func (g coffImportGraph) convertMixedUsing(o *object, normalize func(*object) (*object, bool)) (*object, bool) {
 	if o.info.Format != "COFF" {
 		return nil, false
 	}
@@ -42,9 +46,15 @@ func (g coffImportGraph) convertMixed(o *object) (*object, bool) {
 		}
 	}
 	view.groups = nil
+	dependencies := make(map[int]bool)
+	for _, r := range o.relocs {
+		if template[r.section] {
+			dependencies[r.symbol] = true
+		}
+	}
 	view.symbols = append([]symbol(nil), o.symbols...)
 	for i, s := range view.symbols {
-		if !template[s.section] {
+		if !template[s.section] && (s.section != 0 || !dependencies[i]) {
 			view.symbols[i].global = false
 		}
 	}
@@ -54,7 +64,7 @@ func (g coffImportGraph) convertMixed(o *object) (*object, bool) {
 			view.relocs = append(view.relocs, r)
 		}
 	}
-	converted, ok := g.convertPure(&view)
+	converted, ok := normalize(&view)
 	if !ok {
 		return nil, false
 	}

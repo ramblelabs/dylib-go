@@ -123,9 +123,20 @@ func (d *coffDelayImports) prepare(g coffImportGraph) {
 	d.converted = make(map[*object]*object)
 	d.helpers = make(map[*object]bool)
 	for _, o := range d.objects {
-		if o.info.Format == "COFF" {
+		if o.info.Format == "COFF" && coffImportCandidate(o) {
 			if out, ok := g.convertDelay(o, d.helpers); ok {
 				d.converted[o] = out
+				continue
+			}
+			owners := make(map[*object]bool)
+			out, ok := g.convertMixedUsing(o, func(view *object) (*object, bool) {
+				return g.convertDelay(view, owners)
+			})
+			if ok {
+				d.converted[o] = out
+				for owner := range owners {
+					d.helpers[owner] = true
+				}
 			}
 		}
 	}
@@ -355,7 +366,7 @@ func (g coffImportGraph) delayDLL(stub *object, helper string) (string, bool) {
 		}
 	}
 	text, descriptor, data := indexes[".text"], indexes[".text$2"], indexes[".data"]
-	if text == 0 || descriptor == 0 || data == 0 || d.sym().section != text {
+	if text == 0 || descriptor == 0 || data == 0 || o.sections[data].size < uint64(o.info.Bits/8) || d.sym().section != text {
 		return "", false
 	}
 	b := o.sections[descriptor].data

@@ -100,7 +100,8 @@ func TestCOFFDelayValidation(t *testing.T) {
 				return o
 			}},
 			{"extra_data", 1, func(o []*object) []*object {
-				s := o[1].sections[directorySection(t, o[1], ".data")]
+				s := o[1].sections[directorySection(t, o[1], ".idata$7")]
+				s.name = ".idata$9"
 				s.size = 4
 				s.data = make([]byte, 4)
 				return o

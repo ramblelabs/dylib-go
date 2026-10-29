@@ -61,6 +61,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Pure Go PE32/PE32+ ordinary/bound/delay import metadata, forwarders, cached-address identity, RVA/legacy VA forms, independent LLVM controls and native Windows delay/unload execution.
 - [x] Explicit COFF import composition across multiple archives and raw/archive mixtures, preserving origins, atomic selection, laziness, retry and ordinary/COMDAT lifecycle behavior.
 - [x] Explicit eager binding of recognized raw GNU-style delay function stubs, pure Go metadata/validation, original snapshot retention, cross-archive composition and native Windows Go/llgo calls.
+- [x] Mixed ordinary code/data/BSS and COMDAT/lifecycle retention in validated eager delay stub members, shared import overlays and original-index checks, private-reference rejection, native retry and lazy unused members.
 - [ ] Unconnected metadata composition, raw COFF auxiliary bound metadata, and broader/lazy raw delay-import execution with hooks and unload semantics.
 - [x] Mach-O external `N_INDR` forwarding aliases, chains, archive dependencies, and native macOS object/archive calls.
 - [x] Mach-O eager indirect pointer binding, local/absolute markers, and standard amd64/arm64 stubs with native scalar/large-record calls.
