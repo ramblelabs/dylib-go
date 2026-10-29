@@ -20,4 +20,8 @@ Native tests compile `provider.c` and `consumer.c` at `-O0` and `-O2`, covering
 named/ordinal imports, floating arguments, struct values/results and pointers,
 variadic doubles, repeated calls, failed-link retry and default rejection.
 `control.c` reuses the independent PE fixture's delay helper for system-linked
-controls. Its hooks run only in those controls; eager raw binding bypasses them.
+controls. The control builder renames delay `.idata$*` sections to `.didat$*`,
+separating them from LLD's synthetic ordinary kernel32 import tables without
+changing instructions, symbols or relocation targets. It checks the ordinary
+import directory before native loading. The helper runs only in those controls;
+eager raw binding bypasses it.

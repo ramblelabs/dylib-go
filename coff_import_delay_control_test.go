@@ -1,6 +1,8 @@
 package dylib
 
 import (
+	"bytes"
+	"debug/pe"
 	"fmt"
 	"os"
 	"os/exec"
@@ -48,8 +50,32 @@ func linkDelayControl(t *testing.T, target, opt, dir, consumer, dependency strin
 	helper := compile(t, "testdata/coffdelay/control.c", filepath.Join(dir, "helper.obj"), "--target="+target, opt)
 	output := filepath.Join(dir, "control.dll")
 	args := []string{"/dll", "/noentry", "/nodefaultlib", "/out:" + output, "/export:delay_call", "/export:observed", "/export:release_provider", "/section:.rdata,rw", consumer, dependency, helper, imports}
-	args = append(args, writeComponentObjects(t, t.TempDir(), parts)...)
+	// LLD's synthetic ordinary imports share .idata$* with GNU delay archives.
+	// Keep the control's delay tables separate; instructions, symbols, relocation
+	// targets and descriptor contents remain the original assembler output.
+	var private [][]byte
+	for _, b := range parts {
+		b = append([]byte(nil), b...)
+		count, optional := int(le.Uint16(b[2:])), int(le.Uint16(b[16:]))
+		for i := 0; i < count; i++ {
+			name := b[20+optional+i*40:][:8]
+			if bytes.HasPrefix(name, []byte(".idata$")) {
+				copy(name[:7], ".didat$")
+			}
+		}
+		private = append(private, b)
+	}
+	args = append(args, writeComponentObjects(t, t.TempDir(), private)...)
 	command(t, "lld-link", args...)
+	image, err := pe.Open(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer image.Close()
+	importsFound, err := image.ImportedSymbols()
+	if err != nil || len(importsFound) != 4 {
+		t.Fatal("system control ordinary imports", importsFound, err)
+	}
 	return output
 }
 
