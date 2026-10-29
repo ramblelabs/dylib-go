@@ -162,7 +162,7 @@ func testNativeCOFFImportDirectoryMixedComponent(t *testing.T, omit []bool, layo
 						}
 						path := filepath.Join(dir, mode+".lib")
 						if mode == "object" {
-							paths := writeComponentObjects(t, t.TempDir(), componentParts)
+							paths := writeComponentObjects(t, dir, componentParts)
 							load(t, s, append(paths, dependency)...)
 						} else {
 							parts := append(append([][]byte{}, componentParts...), poisonParts...)
