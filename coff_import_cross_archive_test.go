@@ -254,6 +254,61 @@ func TestArchiveSelectionPreservesCandidates(t *testing.T) {
 	}
 }
 
+func TestCOFFCrossArchiveContributionOrder(t *testing.T) {
+	for _, target := range []string{"x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc", "i686-pc-windows-msvc"} {
+		for _, terminalFirst := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/terminal_first_%t", target, terminalFirst), func(t *testing.T) {
+				_, objects := componentImportParts(t, target, componentDirectoryShapes[1], "", false)
+				dirs := repeatedSections(objects[0], ".idata$2")
+				first, last := copyDirectoryObject(objects[0]), copyDirectoryObject(objects[0])
+				remove := func(o *object, section int) {
+					o.sections[section] = nil
+					for i, s := range o.symbols {
+						if s.section == section {
+							o.symbols[i] = symbol{section: -3}
+						}
+					}
+					var relocs []relocation
+					for _, r := range o.relocs {
+						if r.section != section {
+							relocs = append(relocs, r)
+						}
+					}
+					o.relocs = relocs
+				}
+				remove(first, dirs[1])
+				remove(last, dirs[0])
+				// Move the terminator into the final descriptor contribution.
+				sec := last.sections[dirs[1]]
+				sec.data = append(sec.data, make([]byte, 20)...)
+				sec.size += 20
+				remove(objects[3], directorySection(t, objects[3], ".idata$3"))
+				members := append([]*object{first}, objects[1:]...)
+				for i, o := range members {
+					o.inputOrder, o.memberOrder = 0, i
+				}
+				last.inputOrder, last.memberOrder = 1, -1
+				if terminalFirst {
+					last.inputOrder = 0
+					for _, o := range members {
+						o.inputOrder = 1
+					}
+				}
+				roots, archives := prepareCOFFImportInputs([]*object{last}, members)
+				for _, o := range append(roots, archives...) {
+					if terminalFirst {
+						if len(o.coffImportGroup) != 0 {
+							t.Fatal("input order hid a later descriptor")
+						}
+					} else if len(o.coffImportGroup) != len(members)+1 || len(o.info.Unsupported) != 0 {
+						t.Fatal("raw roots reordered archive descriptors", o.info)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestCOFFCrossArchiveSystemControl(t *testing.T) {
 	if _, err := exec.LookPath("lld-link"); err != nil {
 		t.Skip("optional PE control linker")

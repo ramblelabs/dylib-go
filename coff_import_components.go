@@ -1,6 +1,9 @@
 package dylib
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Only explicit metadata references join objects. Ordinary consumers and
 // unrelated archive members never join a directory by name or input order.
@@ -17,7 +20,17 @@ func prepareCOFFImportInputs(objects, archives []*object) ([]*object, []*object)
 	all := make([]*object, 0, len(objects)+len(archives))
 	all = append(all, objects...)
 	all = append(all, archives...)
-	graph := newCOFFImportGraph(all)
+	// Raw roots and archive candidates are stored separately for selection,
+	// but descriptor contributions must validate in their original input order.
+	ordered := append([]*object(nil), all...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		a, b := ordered[i], ordered[j]
+		if a.inputOrder != b.inputOrder {
+			return a.inputOrder < b.inputOrder
+		}
+		return a.memberOrder < b.memberOrder
+	})
+	graph := newCOFFImportGraph(ordered)
 	for i, o := range all {
 		if converted, ok := graph.convert(o); ok {
 			all[i] = converted
