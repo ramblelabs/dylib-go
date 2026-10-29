@@ -113,7 +113,12 @@ func buildPEImportFixture(t *testing.T, target, opt, shape string) peImportFixtu
 		public, dll, export string
 		ordinal             uint16
 	}{{"first", "pe-first.dll", "first", 0}, {"second", "pe-second.dll", "second", 0}, {"numbered", "pe-second.dll", "", 7}} {
-		policy := uint16(4)
+		// The names match their exports; NOPREFIX handles the i386 underscore.
+		// Avoid EXPORTAS, which older LLD versions treat as an ordinal import.
+		policy := uint16(1)
+		if width == 4 {
+			policy = 2
+		}
 		if v.ordinal != 0 {
 			policy = 0
 		}
