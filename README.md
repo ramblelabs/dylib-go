@@ -29,6 +29,8 @@ The six amd64/arm64 targets test scalar and struct calls, C callbacks, and C-cre
 
 Metadata inspection uses pure Go and can read ELF, Mach-O (including universal containers), COFF/PE (including bigobj and short/GNU long import libraries), and ordinary/GNU thin ar files independently of the file's CPU architecture. Windows short and standard GNU long import libraries resolve selected symbols from their DLLs; verified single-DLL templates support multiple entries, and self-contained descriptor-qualified tables support multiple DLLs with per-DLL optional lookup tables, repeated same-name IAT/ILT/name sections, unbound IAT lookup, rebinding of stale bound caches through complete lookup tables, and split descriptor/null sections with metadata-only global labels and [validated cross-object components](docs/coff.md#cross-object-directories). Both can coexist with [retained ordinary sections and COMDAT groups](docs/coff.md#gnu-long-import-libraries). `Options.LibraryPaths` configures dependency directories. See [archive containers and paths](docs/archives.md) for thin references and snapshots. See [universal Mach-O selection](docs/universal.md) for baseline CPU slices and shared-library limits. Unqualified raw import layouts, OMF, D `.ddl`, Go gc `.a`, and LLVM IR/bitcode are not directly supported library inputs. See the [detailed format limits and language matrix](docs/support.md) for other platforms and unsupported features.
 
+For PE images, `Inspect` includes ordinary, bound and delay import directories in `Info.PEImports`; the standalone `peinfo.Inspect` API reads image bytes directly. It preserves names/ordinals separately from cached IAT addresses. See [PE import metadata](docs/pe-imports.md).
+
 ## Installation
 
 Add the module with `go get github.com/ramblelabs/dylib-go`. The package name is `dylib`. Use Go 1.23+ and a C compiler for native execution, or build the host with llgo. Pure Go metadata inspection works with `CGO_ENABLED=0`.
@@ -1013,6 +1015,7 @@ The former experimental `BindInt32`, `CallInt32`, and `Int32Func` APIs have been
 | `abi/` | Go signatures, reusable libffi calls, and leased native C callbacks |
 | `abi/signature/` | Pure Go declaration, typed-invocation, and typed literal parsing |
 | `abibridge/`, `compiler/abibridge/` | Optional native Swift interfaces and a pinned native-core facade builder |
+| `peinfo/` | Pure Go PE32/PE32+ ordinary, bound and delay import inspection with bounded RVA/VA decoding |
 | `compiler/clang/` | Optional validated C prototypes, dynamic descriptors and direct llgo adapter generation |
 | `compiler/cbridge/` | Original-header C facades with checked native transport storage for complex record ABIs |
 | `compiler/cxx/` | Go-rendered C++17 class facades with fixed C entry points and exception status codes |
