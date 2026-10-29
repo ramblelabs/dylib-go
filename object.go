@@ -8,23 +8,26 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+
+	"github.com/ramblelabs/dylib-go/peinfo"
 )
 
 // Info describes a file without loading or executing it. Unsupported lists features
 // that prevent direct object linking in this implementation, not parser errors.
 type Info struct {
-	Name        string       `json:"name"`
-	Format      string       `json:"format"`
-	Kind        string       `json:"kind"`
-	Arch        string       `json:"arch,omitempty"`
-	OS          string       `json:"os,omitempty"`
-	CPUSubtype  uint32       `json:"cpu_subtype,omitempty"`
-	Bits        int          `json:"bits,omitempty"`
-	Thin        bool         `json:"thin,omitempty"`
-	Symbols     []SymbolInfo `json:"symbols,omitempty"`
-	Imports     []ImportInfo `json:"imports,omitempty"`
-	Members     []Info       `json:"members,omitempty"`
-	Unsupported []string     `json:"unsupported,omitempty"`
+	Name        string          `json:"name"`
+	Format      string          `json:"format"`
+	Kind        string          `json:"kind"`
+	Arch        string          `json:"arch,omitempty"`
+	OS          string          `json:"os,omitempty"`
+	CPUSubtype  uint32          `json:"cpu_subtype,omitempty"`
+	Bits        int             `json:"bits,omitempty"`
+	Thin        bool            `json:"thin,omitempty"`
+	Symbols     []SymbolInfo    `json:"symbols,omitempty"`
+	Imports     []ImportInfo    `json:"imports,omitempty"`
+	Members     []Info          `json:"members,omitempty"`
+	Unsupported []string        `json:"unsupported,omitempty"`
+	PEImports   *peinfo.Imports `json:"pe_imports,omitempty"`
 }
 
 type SymbolInfo struct {
@@ -52,6 +55,13 @@ func Inspect(path string) (Info, error) {
 	f, err := parse(path, b)
 	if err != nil {
 		return Info{}, err
+	}
+	if f.info.Format == "PE" {
+		imports, err := peinfo.Inspect(b)
+		if err != nil {
+			return Info{}, fmt.Errorf("%s: %w", path, err)
+		}
+		f.info.PEImports = &imports
 	}
 	return f.info, nil
 }
