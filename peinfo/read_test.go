@@ -84,6 +84,51 @@ func TestBoundRelativeName(t *testing.T) {
 		t.Fatal(got, err)
 	}
 }
+
+func TestLookupIdentity(t *testing.T) {
+	for _, kind := range []string{"zero_ordinal", "reserved_name_bit"} {
+		t.Run(kind, func(t *testing.T) {
+			data := emptyImage(512)
+			base := uint32(4096)
+			if kind == "reserved_name_bit" {
+				// The file really maps this RVA; name entries still reserve bit 31.
+				base = 0x80000000
+				little.PutUint32(data[392+12:], base)
+				little.PutUint32(data[152+56:], base+4096)
+			}
+			d := data[152+112+8:]
+			little.PutUint32(d, base)
+			little.PutUint32(d[4:], 40)
+			entry := data[512:]
+			little.PutUint32(entry, base+64)
+			little.PutUint32(entry[12:], base+40)
+			little.PutUint32(entry[16:], base+80)
+			copy(entry[40:], "zero.dll\x00")
+			word := uint64(1) << 63
+			if kind == "reserved_name_bit" {
+				word = uint64(base) + 96
+				copy(entry[98:], "named\x00")
+			}
+			little.PutUint64(entry[64:], word)
+			little.PutUint64(entry[80:], word)
+			got, err := Inspect(data)
+			if kind == "reserved_name_bit" {
+				if err == nil || !strings.Contains(err.Error(), "reserved import name") || !reflect.DeepEqual(got, Imports{}) {
+					t.Fatal("reserved name bit accepted", got, err)
+				}
+				return
+			}
+			if err != nil || len(got.Directories) != 1 || len(got.Directories[0].Symbols) != 1 {
+				t.Fatal(got, err)
+			}
+			s := got.Directories[0].Symbols[0]
+			if !s.ByOrdinal || s.Ordinal != 0 || s.Name != "" || s.Address != word {
+				t.Fatal("zero ordinal identity lost", s)
+			}
+		})
+	}
+}
+
 func FuzzInspect(f *testing.F) {
 	f.Add([]byte{})
 	f.Add([]byte("MZ"))

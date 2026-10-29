@@ -94,12 +94,12 @@ func checkPEImportMetadata(t *testing.T, f peImportFixture, shape string) peinfo
 		}
 	}
 	first, second := symbols["pe-first.dll"], symbols["pe-second.dll"]
-	if len(first) != 1 || first[0].Name != "first" || first[0].Ordinal != 0 || len(second) != 2 {
+	if len(first) != 1 || first[0].Name != "first" || first[0].ByOrdinal || len(second) != 2 {
 		t.Fatal("DLL-qualified identities", symbols)
 	}
 	names := map[string]bool{}
 	for _, s := range second {
-		if s.Ordinal != 0 {
+		if s.ByOrdinal {
 			names[fmt.Sprintf("#%d", s.Ordinal)] = true
 		} else {
 			names[s.Name] = true
@@ -140,7 +140,7 @@ func checkLLVMPEImports(t *testing.T, f peImportFixture, got peinfo.Imports) {
 		}
 		for _, s := range d.Symbols {
 			symbol := fmt.Sprintf("symbol: %s (%d)", s.Name, s.Hint)
-			if s.Ordinal != 0 {
+			if s.ByOrdinal {
 				symbol = fmt.Sprintf("symbol:  (%d)", s.Ordinal)
 			}
 			if !strings.Contains(text, strings.ToLower(symbol)) {
@@ -159,7 +159,7 @@ func checkLLVMPEImports(t *testing.T, f peImportFixture, got peinfo.Imports) {
 		}
 		for _, s := range d.Symbols {
 			symbol := fmt.Sprintf("symbol: %s (%d)", s.Name, s.Hint)
-			if s.Ordinal != 0 {
+			if s.ByOrdinal {
 				symbol = fmt.Sprintf("symbol:  (%d)", s.Ordinal)
 			}
 			if !strings.Contains(text, strings.ToLower(symbol)) || !strings.Contains(text, fmt.Sprintf("address: 0x%x", s.Address)) {

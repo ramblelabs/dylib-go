@@ -181,16 +181,19 @@ func zero(b []byte) bool {
 func (r *reader) symbol(word uint64, legacy bool) (Symbol, error) {
 	flag := uint64(1) << (r.width*8 - 1)
 	if word&flag != 0 {
-		if word & ^(flag|0xffff) != 0 || uint16(word) == 0 {
+		if word & ^(flag|0xffff) != 0 {
 			return Symbol{}, fmt.Errorf("invalid ordinal word")
 		}
-		return Symbol{Ordinal: uint16(word)}, nil
+		return Symbol{Ordinal: uint16(word), ByOrdinal: true}, nil
 	}
 	if legacy {
 		if word < r.base {
 			return Symbol{}, fmt.Errorf("legacy import name VA below image base")
 		}
 		word -= r.base
+	}
+	if word > 0x7fffffff {
+		return Symbol{}, fmt.Errorf("reserved import name RVA bits")
 	}
 	b, err := r.read(word, 2)
 	if err != nil {

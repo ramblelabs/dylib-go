@@ -74,7 +74,7 @@ func TestPEImportMetadataValidation(t *testing.T) {
 				{"hint_rva", normal, func(f peImportFixture) { peFixtureWord(f, f.at(t, lookup, f.width), 0x7fffffff) }},
 				{"empty_symbol", normal, func(f peImportFixture) { f.at(t, hint+2, 1)[0] = 0 }},
 				{"reserved_ordinal_bits", normal, func(f peImportFixture) { peFixtureWord(f, f.at(t, lookup, f.width), uint64(1)<<(f.width*8-1)|0x10007) }},
-				{"zero_ordinal", normal, func(f peImportFixture) { peFixtureWord(f, f.at(t, lookup, f.width), uint64(1)<<(f.width*8-1)) }},
+				{"lookup_terminator", normal, func(f peImportFixture) { peFixtureWord(f, f.at(t, lookup, f.width), 0) }},
 				{"iat_terminator", normal, func(f peImportFixture) { peFixtureWord(f, f.at(t, iat+f.width, f.width), 1) }},
 				{"bound_rva", bound, func(f peImportFixture) { le.PutUint32(f.data[f.directoryOffset+11*8:], 0xffffffff) }},
 				{"partial_bound", bound, func(f peImportFixture) { le.PutUint32(f.data[f.directoryOffset+11*8+4:], 7) }},
@@ -155,7 +155,7 @@ func TestPEImportMetadataCacheIdentity(t *testing.T) {
 						t.Fatal(got, err)
 					}
 					if mode == "unknown_bound_lookup" {
-						if entry.LookupAvailable || entry.Symbols[0].Name != "" || entry.Symbols[0].Ordinal != 0 || entry.Symbols[0].Address != cached {
+						if entry.LookupAvailable || entry.Symbols[0].Name != "" || entry.Symbols[0].ByOrdinal || entry.Symbols[0].Address != cached {
 							t.Fatal("cached pointer became lookup identity", entry)
 						}
 					} else if !entry.LookupAvailable || entry.Symbols[0].Name != "first" {

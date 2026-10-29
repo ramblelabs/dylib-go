@@ -8,7 +8,7 @@ PE32 and PE32+ images can be inspected on any host.
 | Metadata | Reported values |
 | --- | --- |
 | Ordinary import directory | DLL name, timestamp, forwarder chain, lookup/IAT RVAs, lookup availability and symbols |
-| Imported symbol | Export name and hint or ordinal, plus the original on-disk IAT word |
+| Imported symbol | Export name and hint or explicit `ByOrdinal` flag and 16-bit ordinal, plus the original on-disk IAT word |
 | Bound import directory | Module timestamps and forwarder module names/timestamps, including reserved forwarder words |
 | Delay import directory | Attributes, timestamp, normalized module-handle/IAT/INT/bound/unload RVAs, symbols and auxiliary address tables |
 
@@ -17,6 +17,8 @@ ordinals come from that table. An unbound descriptor without an ILT uses its IAT
 for lookup. A bound descriptor without an ILT reports `LookupAvailable=false`:
 its cached addresses remain visible, while symbol names and ordinals are
 unavailable. Addresses are never interpreted as lookup names in this case.
+`ByOrdinal` preserves ordinal imports including ordinal zero. The metadata reader
+reports the wire identity; it does not decide whether the target DLL exports it.
 
 `Symbol.Address`, `BoundAddresses` and `UnloadAddresses` are on-disk values.
 They are not validated callable process addresses. ASLR, binding, delay helpers

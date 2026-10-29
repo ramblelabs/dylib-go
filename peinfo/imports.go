@@ -10,11 +10,13 @@ type Imports struct {
 
 // Symbol keeps a lookup identity and the original on-disk IAT word separately.
 // Name/Ordinal are unavailable when a bound directory has no lookup table.
+// ByOrdinal distinguishes ordinal imports, including ordinal zero, from names.
 type Symbol struct {
-	Name    string `json:"name,omitempty"`
-	Hint    uint16 `json:"hint,omitempty"`
-	Ordinal uint16 `json:"ordinal,omitempty"`
-	Address uint64 `json:"address"`
+	Name      string `json:"name,omitempty"`
+	Hint      uint16 `json:"hint,omitempty"`
+	Ordinal   uint16 `json:"ordinal,omitempty"`
+	ByOrdinal bool   `json:"by_ordinal,omitempty"`
+	Address   uint64 `json:"address"`
 }
 
 // ImportDirectory preserves the descriptor and its on-disk address slots.
