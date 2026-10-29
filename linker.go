@@ -394,12 +394,7 @@ func (s *Session) selectObjects(roots []string) ([]*object, error) {
 		}
 	}
 	used := map[*object]bool{}
-	imports := newCOFFImportGraph(objs)
-	for i, o := range objs {
-		if converted, ok := imports.convert(o); ok {
-			objs[i] = converted
-		}
-	}
+	objs, archives = prepareCOFFImportInputs(objs, archives)
 	for {
 		objs = expandCOFFImportGroups(objs, used)
 		selected, err := coalesceObjects(objs)

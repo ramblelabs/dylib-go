@@ -10,6 +10,24 @@ type coffImportComponents struct {
 	converted map[*object]*object
 }
 
+// Resolve explicit metadata references across all staged inputs before archive
+// selection. The returned views retain each member's original origin/order;
+// staged snapshots and unrelated members remain unchanged and unselected.
+func prepareCOFFImportInputs(objects, archives []*object) ([]*object, []*object) {
+	all := make([]*object, 0, len(objects)+len(archives))
+	all = append(all, objects...)
+	all = append(all, archives...)
+	graph := newCOFFImportGraph(all)
+	for i, o := range all {
+		if converted, ok := graph.convert(o); ok {
+			all[i] = converted
+		}
+	}
+	// Selection appends members to roots. Keep that append from overwriting
+	// unselected archive candidates sharing the temporary backing array.
+	return all[:len(objects):len(objects)], all[len(objects):]
+}
+
 func (c *coffImportComponents) prepare(g coffImportGraph) {
 	if c.prepared {
 		return

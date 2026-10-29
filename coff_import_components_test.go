@@ -15,6 +15,7 @@ type componentDirectoryShape struct {
 	name               string
 	namespace          string
 	multi, nullInTable bool
+	crossArchive       bool
 	omit               []bool
 	timestamps         []uint32
 }

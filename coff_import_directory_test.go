@@ -378,6 +378,10 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 		parts, _ = componentImportParts(t, target, *component, "", false)
 	}
 	paths := writeComponentObjects(t, dir, parts)
+	var crossPaths []string
+	if component != nil && component.crossArchive {
+		crossPaths = crossImportArchives(t, dir, parts)
+	}
 	obj := paths[0]
 	archive := filepath.Join(dir, "directory.lib")
 	archiveParts := append([][]byte{}, parts...)
@@ -397,7 +401,10 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 	for _, opt := range []string{"-O0", "-O2"} {
 		consumer := compile(t, source, source+opt+".obj", "--target="+target, opt)
 		control := filepath.Join(dir, "control"+opt+".dll")
-		if component != nil {
+		if len(crossPaths) != 0 {
+			linkDirectoryInputs(t, target, control, []string{"/wholearchive:" + crossPaths[0], "/wholearchive:" + crossPaths[1]}, consumer)
+			checkBoundDirectoryControl(t, target, control, layout, []int{1, 0})
+		} else if component != nil {
 			linkDirectoryInputs(t, target, control, paths, consumer)
 			checkBoundDirectoryControl(t, target, control, layout, []int{1, 0})
 		} else if len(layout.timestamps) != 0 {
@@ -409,9 +416,17 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 			linkDirectoryControl(t, target, control, obj, consumer)
 			checkDirectoryLookupRVAs(t, control, []bool{omit[1], omit[0]})
 		}
-		for _, kind := range []string{"object", "archive", "system_library"} {
+		kinds := []string{"object", "archive", "system_library"}
+		if len(crossPaths) != 0 {
+			kinds = []string{"archives", "mixed_inputs", "retry", "system_library"}
+		}
+		for _, kind := range kinds {
 			t.Run(opt+"/"+kind, func(t *testing.T) {
-				s := New(Options{})
+				opts := Options{}
+				if len(crossPaths) != 0 {
+					opts.LibraryPaths = []string{dir}
+				}
+				s := New(opts)
 				defer s.Close()
 				input := obj
 				if kind == "archive" {
@@ -425,7 +440,30 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 					call(t, s, "directory_imported", 20, 22, 2252)
 					return
 				}
-				if component != nil && kind == "object" {
+				if len(crossPaths) != 0 {
+					// Reload independent snapshots for every case; retry drops a
+					// backing archive before the remaining provider is staged.
+					inputs := crossImportArchives(t, t.TempDir(), parts)
+					if kind == "mixed_inputs" {
+						load(t, s, paths[0], inputs[1], consumer)
+						// The other members of the first archive remain explicit
+						// raw objects in this mixed ownership case.
+						for i := 2; i < len(paths); i += 2 {
+							load(t, s, paths[i])
+						}
+					} else {
+						load(t, s, inputs[1], consumer)
+						if kind == "retry" {
+							if err := s.Link("first"); err == nil || s.image != nil || len(s.libs) != 0 {
+								t.Fatal("incomplete cross-archive component published", err)
+							}
+							if err := os.Remove(inputs[1]); err != nil {
+								t.Fatal(err)
+							}
+						}
+						load(t, s, inputs[0])
+					}
+				} else if component != nil && kind == "object" {
 					stage := filepath.Join(t.TempDir(), "staged.obj")
 					if err := os.WriteFile(stage, parts[0], 0600); err != nil {
 						t.Fatal(err)
