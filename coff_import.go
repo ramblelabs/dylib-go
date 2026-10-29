@@ -14,6 +14,7 @@ import (
 type coffImport struct {
 	dll, name, public string
 	ordinal           uint16 // Nonzero only for an ordinal import.
+	delay             bool
 }
 
 type coffImportSymbol struct {

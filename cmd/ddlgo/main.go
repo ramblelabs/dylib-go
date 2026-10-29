@@ -35,6 +35,7 @@ func run(args []string, output io.Writer) error {
 		keep := fs.Bool("keep-libraries", false, "retain runtime-bearing OS libraries until process exit")
 		emulatedTLS := fs.Bool("emulated-tls", false, "enable image-owned Clang emulated TLS")
 		nativeTLS := fs.Bool("native-tls", false, "enable supported image-owned Unix native TLS models")
+		delayImports := fs.Bool("eager-delay-imports", false, "bind recognized raw COFF delay imports at Link")
 		convention := fs.String("abi", "default", "C calling convention: default, cdecl, stdcall, fastcall, thiscall, win64, sysv64")
 		variadicFrom := fs.Int("variadic-from", -1, "number of fixed parameters for a concrete variadic call shape")
 		linkageName := fs.String("symbol", "", "exact linkage name, overriding the Go declaration name")
@@ -67,7 +68,11 @@ func run(args []string, output io.Writer) error {
 		if err := input.Signature.Validate(); err != nil {
 			return err
 		}
-		return executeCall(input, dylib.Options{ProcessSymbols: *process, KeepLibraries: *keep, EmulatedTLS: *emulatedTLS, NativeTLS: *nativeTLS}, output)
+		mode := dylib.DelayImportsDisabled
+		if *delayImports {
+			mode = dylib.DelayImportsEager
+		}
+		return executeCall(input, dylib.Options{ProcessSymbols: *process, KeepLibraries: *keep, EmulatedTLS: *emulatedTLS, NativeTLS: *nativeTLS, DelayImports: mode}, output)
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}

@@ -42,7 +42,8 @@ type ImportInfo struct {
 	Symbol  string `json:"symbol"`         // Normalized public linker name.
 	Name    string `json:"name,omitempty"` // DLL export name, absent for ordinals.
 	Ordinal uint16 `json:"ordinal,omitempty"`
-	Kind    string `json:"kind"` // code, data, or const.
+	Kind    string `json:"kind"`            // code, data, or const.
+	Delay   bool   `json:"delay,omitempty"` // Requires an explicit delay-import mode.
 }
 
 // Inspect reads metadata only; it can inspect foreign targets on any host.
