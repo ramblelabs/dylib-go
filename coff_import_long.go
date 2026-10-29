@@ -13,6 +13,7 @@ type coffImportGraph struct {
 	defs       map[string][]definition
 	dlls       map[coffLocation]string // Per-conversion cache for combined import members.
 	components *coffImportComponents
+	delays     *coffDelayImports
 }
 
 type coffLocation struct {
@@ -22,7 +23,7 @@ type coffLocation struct {
 }
 
 func newCOFFImportGraph(objects []*object) coffImportGraph {
-	g := coffImportGraph{defs: make(map[string][]definition), components: &coffImportComponents{objects: objects}}
+	g := coffImportGraph{defs: make(map[string][]definition), components: &coffImportComponents{objects: objects}, delays: &coffDelayImports{objects: objects}}
 	for _, o := range objects {
 		if o.info.Format != "COFF" {
 			continue
@@ -93,6 +94,12 @@ func (g coffImportGraph) convert(o *object) (*object, bool) {
 	if g.components != nil {
 		g.components.prepare(g)
 		if converted := g.components.converted[o]; converted != nil {
+			return converted, true
+		}
+	}
+	if g.delays != nil {
+		g.delays.prepare(g)
+		if converted := g.delays.converted[o]; converted != nil {
 			return converted, true
 		}
 	}

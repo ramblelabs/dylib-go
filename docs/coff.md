@@ -67,7 +67,51 @@ COMDAT mixed-member tests additionally verify selections 1–7, association and 
 
 Multi-entry tests inspect pure, mixed and COMDAT members on all three architectures, including data-first/ordinal-only tables, const aliases, optional ILTs, shared descriptors and malformed later entries without partial conversion. Native Windows tests call named/ordinal functions and imported data from one member through pure and mixed archives at `-O0`/`-O2`; mixed cases retain dependency extraction, retry, associative lifecycle selection and lazy missing-DLL behavior.
 
-ARM64EC hybrid imports, delay-load tables, and linker directives for automatic default-library selection remain outside the current implementation.
+ARM64EC hybrid imports and linker directives for automatic default-library selection remain outside the current implementation.
+
+## Raw delay imports
+
+Recognized GNU-style delay-import function stubs support explicit eager binding
+on Windows amd64/arm64/386. Set `Options.DelayImports` to `DelayImportsEager`.
+The zero value, `DelayImportsDisabled`, rejects selected delay imports before
+opening their DLLs or initializing the raw image. Unused archive imports remain
+inert. `Inspect` reports `ImportInfo.Delay` independently of that policy and
+opens no DLL. The testing CLI accepts `call -eager-delay-imports`.
+
+The Go decoder validates the complete fast/fallback thunk, its absolute initial
+IAT pointer, a unique shared resolver and its 32-byte RVA descriptor in
+`.text$2`, and the DLL name provider. Names and ordinals come from the separate
+lookup table; the initial fallback address never supplies an export identity.
+The recognized resolver/cache/descriptor/name helpers must be metadata-only:
+no ordinary exports, constructors, TLS, COMDAT groups or unclaimed data.
+Successful conversion creates private import views, leaving staged snapshots
+unchanged. Explicitly staged helper objects become empty private views; archive
+inspection retains their metadata for later cross-archive composition. Direct
+references to consumed resolver/descriptor symbols cannot resolve.
+
+Eager mode resolves selected functions into ordinary session-owned IAT slots
+at `Link`, before raw initialization. Existing DLL search paths, failed-link
+retry, ownership and `KeepLibraries` behavior apply. It never runs the delay
+resolver, notification/failure hooks, module cache or fallback thunk. Therefore
+it deliberately changes DLL load timing and does not provide lazy loading or
+delay-specific unloading. Complete OS-loaded DLLs retain their native semantics.
+
+Tests inspect real GNU Binutils `--output-delaylib` amd64/386 archives and
+Clang-assembled compatible templates for all three architectures, including
+bigobj, split archives, malformed references and missing/ambiguous providers.
+Native Windows Go and llgo tests execute scalar/name/ordinal imports, floating
+arguments, struct values/results/pointers and variadic doubles at `-O0`/`-O2`;
+32-bit Windows uses Go. Repeated calls, provider/dependency retry, default
+rejection, unused members and file removal after staging are covered. Independent
+system-linked controls execute the original fallback and a compiled C resolver
+to check the same results. Genuine GNU archives also execute on amd64/386.
+See [fixture provenance and regeneration](../testdata/coffdelay/README.md).
+
+This subset requires one function per pure stub and unique bounded helper
+providers. Mixed ordinary delay members, imported data, auxiliary bound/unload
+tables, nonzero timestamps, legacy VA descriptors, other resolver/thunk shapes,
+and full lazy execution remain unsupported. ARM64 uses compatible assembler
+controls; no GNU ARM64 delay-archive producer is qualified.
 
 ## Self-contained import directories
 

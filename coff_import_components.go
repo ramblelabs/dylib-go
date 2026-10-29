@@ -34,6 +34,13 @@ func prepareCOFFImportInputs(objects, archives []*object) ([]*object, []*object)
 	for i, o := range all {
 		if converted, ok := graph.convert(o); ok {
 			all[i] = converted
+		} else if graph.delays.helpers[o] {
+			// Consume proven metadata only in this link's private view. Archive
+			// inspection retains helpers for subsequent cross-archive composition.
+			copy := *o
+			copy.sections, copy.relocs, copy.groups, copy.symbols = nil, nil, nil, nil
+			copy.info.Symbols, copy.info.Imports, copy.info.Unsupported = nil, nil, nil
+			all[i] = &copy
 		}
 	}
 	// Selection appends members to roots. Keep that append from overwriting

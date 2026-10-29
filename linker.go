@@ -31,6 +31,10 @@ var ErrPendingThreadDestructors = errors.New("dylib: native thread destructors r
 // (for example libc on POSIX). Explicitly loaded libraries are always searched.
 type Options struct {
 	ProcessSymbols bool
+	// DelayImports selects the policy for recognized raw COFF delay libraries.
+	// The default rejects selected delay imports. Eager mode binds before native
+	// initialization and owns DLLs like ordinary imports; lazy helpers are bypassed.
+	DelayImports DelayImportMode
 	// EmulatedTLS enables Clang -femulated-tls for raw objects and archives.
 	// Values belong to native OS threads, not Go goroutines. Supports constant
 	// values, documented C++ thread-exit registrations and Clang MSVC emulated
@@ -532,6 +536,9 @@ func (s *Session) link(roots []string) error {
 	if s.initErr != nil {
 		return s.initErr
 	}
+	if err := checkCOFFDelayImports(nil, s.opts.DelayImports); err != nil {
+		return err
+	}
 	if s.initializing {
 		return ErrInitializing
 	}
@@ -559,6 +566,9 @@ func (s *Session) link(roots []string) error {
 		if err := checkTarget(o); err != nil {
 			return err
 		}
+	}
+	if err := checkCOFFDelayImports(objs, s.opts.DelayImports); err != nil {
+		return err
 	}
 	// Selection returns private snapshots, including COMDAT discard decisions.
 	defs, err := definitions(objs)
