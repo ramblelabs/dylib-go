@@ -12,12 +12,19 @@ case "$(uname -s)" in
     echo 'DYLIB_TLSDESC_CLANG=clang-19' >> "$GITHUB_ENV"
     ;;
   Darwin)
-    for formula in libffi pkgconf; do
+    for formula in libffi pkgconf llvm@22 lld@22; do
       brew list --versions "$formula" >/dev/null || brew install "$formula"
     done
+    # Expose PE producers/readers without replacing the host C compiler.
+    pe_tools="$RUNNER_TEMP/dylib-pe-tools"
+    mkdir -p "$pe_tools"
+    for tool in llvm-ar llvm-readobj; do
+      ln -sf "$(brew --prefix llvm@22)/bin/$tool" "$pe_tools/$tool"
+    done
+    ln -sf "$(brew --prefix lld@22)/bin/lld-link" "$pe_tools/lld-link"
+    echo "$pe_tools" >> "$GITHUB_PATH"
     echo "PKG_CONFIG_PATH=$(brew --prefix libffi)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
     if ! command -v llc >/dev/null; then
-      brew list --versions llvm@22 >/dev/null || brew install llvm@22
       # Keep the IR producer/reader together without replacing other C tools.
       llvm_bin=$(brew --prefix llvm@22)/bin
       echo "DYLIB_LLC=$llvm_bin/llc" >> "$GITHUB_ENV"
