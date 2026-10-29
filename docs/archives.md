@@ -39,6 +39,13 @@ external object or regular archive, preserving the existing explicit-library,
 `Options.LibraryPaths` and Windows search rules. DLLs themselves are opened
 normally during linking; their contents are not part of the object snapshot.
 
+Explicit COFF import metadata references can join members across multiple
+staged archives, including raw/archive mixtures. Selecting a validated
+component selects all its members while unrelated components remain lazy.
+Member origins and DLL search precedence are preserved. See
+[cross-object directories](coff.md#cross-object-directories) for ownership,
+ambiguity, bounds and failed-link retry.
+
 The thin container plus unique external file reads are limited to 256 MiB.
 Decoded member bytes, including repeated references, have a separate 256 MiB
 limit. A referenced regular archive counts its complete file size toward the

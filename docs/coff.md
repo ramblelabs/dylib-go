@@ -170,13 +170,27 @@ mixed ordinary/COMDAT lifecycle selection and failed-dependency retry.
 
 ## Cross-object directories
 
-A descriptor-qualified directory can span multiple COFF objects in one archive,
-or multiple raw objects staged in the same session. Explicit global metadata
+A descriptor-qualified directory can span raw COFF objects and members of
+multiple archives staged in the same session. Explicit global metadata
 references connect the members; definitions must be unique for the target
 architecture. Descriptors, ILTs, hint/DLL names, terminated IATs and import thunks
 may belong to different members. A null section must belong to this connected
 component. Unconnected terminators and unrelated archive order are never used to
 infer a missing directory boundary.
+
+`Link` validates a temporary view of all staged candidates before selecting
+archive members. It does not rewrite the staged files or their snapshots.
+Metadata definitions must be unique across the staged inputs; archive order does not
+resolve ambiguous metadata owners. `Inspect` still reports each input on its
+own, so an incomplete archive can report unsupported tables even though a
+session can compose it with its explicit providers.
+
+Each projected member keeps its original input/member order and source
+directory. The IAT owner's object or archive directory remains its DLL search
+origin; a name-provider archive does not change that origin. Explicit
+`Options.LibraryPaths` keeps its existing precedence. Missing providers may be
+staged after a failed link and retried, even after loaded backing files have
+been deleted.
 
 The Go decoder builds a bounded temporary view and applies the same directory,
 row, relocation and exact-thunk validation described above. Only recognized
@@ -193,6 +207,13 @@ including unused components naming missing DLLs. Failed ordinary dependencies
 permit retry before initialization. Unsupported features retain their member's
 diagnostics and fail before DLL binding. Component validation budgets section
 data, names and bookkeeping within the existing 256 MiB input limit.
+
+Cross-archive tests cover six MSVC/GNU architecture targets, reversed archive
+order, raw/archive mixtures, optional ILTs and bound caches. Independent LLD
+PE controls use `/wholearchive` to express the same atomic component selection.
+Native Windows Go/llgo tests execute both object and OS-library controls at
+`-O0`/`-O2`, with dependency retry, unused components and ordinary/COMDAT
+initialization and destruction.
 
 `Load` accepts incomplete canonical raw COFF import metadata so its providers can
 be staged later. `Link` composes and validates the complete set before opening
