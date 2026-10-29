@@ -364,7 +364,7 @@ func (g coffImportGraph) delayDLL(stub *object, helper string) (string, bool) {
 	}
 	rva, absolute, branch := delayRelocations(o.info.Arch)
 	name, ok := g.delayReference(o, descriptor, 4, rva, 4)
-	if !ok || name.offset != 0 || !validCOFFImportHelper(name.o) {
+	if !ok || name.offset != 0 || !validCOFFDelayNameProvider(name, coffDelaySymbolName(o, descriptor, 4)) {
 		return "", false
 	}
 	dll, ok := name.name(0)
@@ -477,4 +477,36 @@ func coffDelaySymbolName(o *object, section int, offset uint64) string {
 		}
 	}
 	return ""
+}
+
+// Consuming a name helper must not erase independent data exports, TLS or a
+// second directory. The broader ordinary-import helper validator does not own
+// those symbols and therefore cannot establish this stronger condition alone.
+func validCOFFDelayNameProvider(name coffLocation, public string) bool {
+	o := name.o
+	if !validCOFFImportHelper(o) || len(o.relocs) != 0 || name.section <= 0 || o.sections[name.section].name != ".idata$7" {
+		return false
+	}
+	seen := make(map[string]bool)
+	for _, sec := range o.sections {
+		if sec == nil {
+			continue
+		}
+		if uint64(len(sec.data)) != sec.size || sec.nativeTLS != 0 || sec.size != 0 && (seen[sec.name] || sec.name != ".idata$4" && sec.name != ".idata$5" && sec.name != ".idata$7") {
+			return false
+		}
+		if sec.size != 0 {
+			seen[sec.name] = true
+		}
+	}
+	count := 0
+	for _, s := range o.symbols {
+		if s.global {
+			if s.name != public || s.section != name.section || s.value != 0 || s.weak || s.alias != nil || s.forward != nil {
+				return false
+			}
+			count++
+		}
+	}
+	return count == 1
 }

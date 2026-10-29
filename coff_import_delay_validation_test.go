@@ -50,6 +50,32 @@ func TestCOFFDelayValidation(t *testing.T) {
 				o[0].info.Unsupported = append(o[0].info.Unsupported, "unrelated feature")
 				return o
 			}},
+			{"name_export", 1, func(o []*object) []*object {
+				n := o[len(o)-1]
+				n.symbols = append(n.symbols, symbol{name: "ordinary_data", section: directorySection(t, n, ".idata$5"), global: true})
+				return o
+			}},
+			{"name_initializer", 1, func(o []*object) []*object {
+				n := o[len(o)-1]
+				n.sections = append(n.sections, &section{name: ".CRT$XCU", size: 8, data: make([]byte, 8), lifecycle: lifecycleInit})
+				return o
+			}},
+			{"name_tls", 1, func(o []*object) []*object {
+				n := o[len(o)-1]
+				n.sections[directorySection(t, n, ".idata$5")].nativeTLS = 1
+				return o
+			}},
+			{"name_extra_table", 1, func(o []*object) []*object {
+				n := o[len(o)-1]
+				n.sections = append(n.sections, &section{name: ".idata$2", size: 20, data: make([]byte, 20)})
+				return o
+			}},
+			{"name_duplicate_section", 1, func(o []*object) []*object {
+				n := o[len(o)-1]
+				sec := *n.sections[directorySection(t, n, ".idata$7")]
+				n.sections = append(n.sections, &sec)
+				return o
+			}},
 			{"head_relocation_bounds", 1, func(o []*object) []*object { o[0].relocs[0].offset = 0xffffffff; return o }},
 			{"stub_code", 1, func(o []*object) []*object {
 				o[1].sections[directorySection(t, o[1], ".text")].data[0] = 0x90
