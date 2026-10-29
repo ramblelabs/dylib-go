@@ -15,7 +15,7 @@ jobs:
   native:
     name: llgo / ${{ matrix.target }} / ${{ matrix.mode }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.target == 'darwin-amd64' && 150 || 75 }}
+    timeout-minutes: ${{ matrix.target == 'darwin-amd64' && 180 || 75 }}
     strategy:
       fail-fast: false
       matrix:
