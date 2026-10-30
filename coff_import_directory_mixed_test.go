@@ -149,6 +149,9 @@ func testNativeCOFFImportDirectoryMixedComponent(t *testing.T, omit []bool, layo
 				if component != nil && component.crossArchive {
 					modes = []string{"archives", "retry"}
 				}
+				if component != nil && component.detachedNull {
+					modes = []string{"explicit", "retry"}
+				}
 				for _, mode := range modes {
 					t.Run(mode, func(t *testing.T) {
 						observer := New(Options{})
@@ -156,7 +159,7 @@ func testNativeCOFFImportDirectoryMixedComponent(t *testing.T, omit []bool, layo
 						load(t, observer, first)
 						call(t, observer, "events", 1, 0, 0)
 						opts := Options{}
-						if component != nil && component.crossArchive {
+						if component != nil && (component.crossArchive || component.detachedNull) {
 							opts.LibraryPaths = []string{dir}
 						}
 						s := New(opts)
@@ -169,7 +172,20 @@ func testNativeCOFFImportDirectoryMixedComponent(t *testing.T, omit []bool, layo
 							load(t, s, override)
 						}
 						path := filepath.Join(dir, mode+".lib")
-						if component != nil && component.crossArchive {
+						if component != nil && component.detachedNull {
+							paths := writeComponentObjects(t, t.TempDir(), componentParts)
+							if err := s.LoadCOFFImportDirectory(paths...); err != nil {
+								t.Fatal(err)
+							}
+							for _, path := range paths {
+								if err := os.Remove(path); err != nil {
+									t.Fatal(err)
+								}
+							}
+							if mode != "retry" {
+								load(t, s, dependency)
+							}
+						} else if component != nil && component.crossArchive {
 							parts := append(append([][]byte{}, componentParts...), poisonParts...)
 							if mode == "archives" {
 								parts = append(parts, dependent)

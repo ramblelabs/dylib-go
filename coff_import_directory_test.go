@@ -406,7 +406,11 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 			checkBoundDirectoryControl(t, target, control, layout, []int{1, 0})
 		} else if component != nil {
 			linkDirectoryInputs(t, target, control, paths, consumer)
-			checkBoundDirectoryControl(t, target, control, layout, []int{1, 0})
+			order := []int{1, 0}
+			if component.detachedNull {
+				order = []int{0, 1}
+			}
+			checkBoundDirectoryControl(t, target, control, layout, order)
 		} else if len(layout.timestamps) != 0 {
 			linkDirectoryControl(t, target, control, obj, consumer)
 			checkBoundDirectoryControl(t, target, control, layout, []int{1, 0})
@@ -419,6 +423,9 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 		kinds := []string{"object", "archive", "system_library"}
 		if len(crossPaths) != 0 {
 			kinds = []string{"archives", "mixed_inputs", "retry", "system_library"}
+		}
+		if component != nil && component.detachedNull {
+			kinds = []string{"explicit", "system_library"}
 		}
 		for _, kind := range kinds {
 			t.Run(opt+"/"+kind, func(t *testing.T) {
@@ -440,7 +447,16 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 					call(t, s, "directory_imported", 20, 22, 2252)
 					return
 				}
-				if len(crossPaths) != 0 {
+				if component != nil && component.detachedNull {
+					if err := s.LoadCOFFImportDirectory(paths...); err != nil {
+						t.Fatal(err)
+					}
+					staged := len(s.files)
+					if err := s.LoadCOFFImportDirectory(paths...); err == nil || len(s.files) != staged || len(s.libs) != 0 {
+						t.Fatal("overlapping directory was staged", err)
+					}
+					load(t, s, consumer)
+				} else if len(crossPaths) != 0 {
 					// Reload independent snapshots for every case; retry drops a
 					// backing archive before the remaining provider is staged.
 					inputs := crossImportArchives(t, t.TempDir(), parts)
