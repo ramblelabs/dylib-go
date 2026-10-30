@@ -102,6 +102,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] macOS amd64/arm64 compact unwind records, read-only native relative tables/header, frame/frameless/large-stack C++ execution, weak-copy exclusion and mixed DWARF fallback.
 - [ ] Windows language handlers and newer unwind versions, additional Mach-O forms and additional POSIX unwind providers.
 - [x] Retried session cleanup retaining image/library ownership and provider leases after native failures, concurrent error propagation, one-time finalizers and native TLS lifetime tests.
+- [x] Unpublished-image rollback preserving primary and cleanup errors, retained native resources/provider leases and closed-session handoff; successful rollback retains dependency/link retry behavior.
 - [x] Concurrent Symbol/Function/CallPlan calls and reentrant callbacks, with retirement before cleanup and no invocation lock across native calls.
 - [x] Scoped reentrant load/link initializers with staged raw symbols, prior OS-library/retained-provider symbols, busy errors for ordinary operations, and concurrent close/failure lifetime guards before publication.
 - [x] Explicit Clang `-femulated-tls` raw objects/archives with validated descriptors, constant/zero initialization, aligned per-thread storage, host pthread/FLS cleanup, retry and session retirement tests.

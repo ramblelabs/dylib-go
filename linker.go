@@ -521,7 +521,9 @@ func (s *Session) selectObjects(roots []string) ([]*object, error) {
 
 // Link extracts archive members needed by roots and object references, then
 // resolves all relocations before granting execute permission. Before native
-// initialization, failure permits adding dependencies and retrying. A nonzero
+// initialization, failure permits adding dependencies and retrying if rollback
+// cleanup succeeds. A cleanup failure retains the unpublished image, blocks
+// further linking and mutation, and requires Close to retry cleanup. A nonzero
 // C initializer result permanently fails the session; call Close to clean up.
 // No executable image is published on failure.
 // Supported object initializers run after every link validation succeeds.
@@ -593,21 +595,29 @@ func (s *Session) link(roots []string) error {
 	}
 	for _, n := range roots {
 		if _, err = im.lookup(n); err != nil {
-			im.close()
-			return err
+			return s.discardUnpublishedImage(im, err)
 		}
 	}
 	if s.opts.RegisterUnwind && len(objs) != 0 {
 		if err := s.duringInitialization(nil, im.registerUnwind); err != nil {
-			s.duringInitialization(nil, im.close)
-			return err
+			return s.discardUnpublishedImage(im, err)
 		}
 	}
 	if s.closed {
-		s.duringInitialization(nil, im.close)
-		return ErrClosed
+		return s.discardUnpublishedImage(im, ErrClosed)
 	}
 	return s.initializeImage(im)
+}
+
+// Caller holds mu. Failed rollback must keep the image and its dependencies
+// owned, just as newImage's construction cleanup and initializer failures do.
+func (s *Session) discardUnpublishedImage(im *image, cause error) error {
+	if cleanup := s.duringInitialization(nil, im.close); cleanup != nil {
+		err := errors.Join(cause, fmt.Errorf("unpublished image cleanup: %w", cleanup))
+		s.failedImage, s.initErr = im, err
+		return err
+	}
+	return cause
 }
 
 // Lookup links on first use. Names omit Mach-O's leading linker underscore;
