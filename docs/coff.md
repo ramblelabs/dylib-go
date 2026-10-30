@@ -302,8 +302,9 @@ unconnected metadata, including a separate `.idata$3` terminator that has no
 relocation connecting it to the descriptor owner. `Load` retains its existing
 reference-based composition rules.
 
-Every supplied object belongs to this set. Descriptor contributions follow path
-order; `.idata$3` follows `.idata$2` as in a native COFF link. The same bounded
+Every supplied object belongs to this set. The explicit transaction defines
+descriptor contribution order from its paths; `.idata$3` follows `.idata$2`.
+The same bounded
 directory, exact-thunk, relocation and mixed-section validators apply. Ordinary
 sections, COMDAT associations, lifecycle entries, original symbol indices and
 each IAT owner's DLL-search directory are preserved. The complete set must
@@ -321,6 +322,50 @@ Tests cover MSVC/GNU AMD64/ARM64/i386, reversed input order, ordinary/bigobj
 records, bound caches and immutable failure. Independent LLD/PE controls verify
 native table order. Windows Go/llgo execute named/data/ordinal calls and mixed
 ordinary/COMDAT lifecycle selection, dependency retry and deleted snapshots at
+`-O0`/`-O2`.
+
+### Selected archive sources
+
+`Session.LoadCOFFImportDirectoryFrom(sources...)` extends the same transaction
+to raw objects and explicitly selected regular/thin archive members. Each
+`COFFImportSource` has a `Path` and an optional `Members` slice. A nil slice
+identifies a raw object; a non-nil slice must contain distinct, in-range member
+indices and cannot be empty. Indices are zero based, omit archive symbol/name
+tables and distinguish duplicate names. For valid native archives they follow
+`Inspect(path).Members` order. Sources follow argument order, then each source's
+requested member order. Archive symbol indexes do not choose or reorder them.
+These APIs define a materialization order rather than reproducing a particular
+linker's implicit ordering. For example, [LLD sorts concrete import chunks by
+archive and object filename](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/lld/COFF/Writer.cpp#L883-L927).
+Independent controls therefore materialize the original selected objects under
+ordered filenames before linking; reversing existing command-line filenames
+alone would not prove the requested order.
+
+Regular GNU, COFF and BSD name forms use the shared container decoder. Thin
+containers are validated before external I/O; only files required by selected
+references are read. Selected proxies resolve exact regular-member header
+offsets. Every thin input snapshots each required external file once and
+preserves its directory as the IAT owner's DLL-search origin. Member diagnostics
+include the original member index, name and proxy identity. Combined source and
+external file reads share the 256 MiB input limit; decoded thin payloads and
+directory composition also retain their existing bounds.
+
+This is a closed selection. Every selected object becomes a root, and unselected
+members are not parsed, staged or available for later lazy extraction. Each
+source path is consumed as a whole: a subsequent `Load` of that path is an
+idempotent operation, including after the file has been deleted. Stage ordinary
+dependencies separately. Repeated source paths, overlapping previously loaded
+paths, invalid indices, selected non-COFF payloads and incomplete directories
+fail atomically before DLL binding. Ordinary `Load` retains normal archive
+extraction and all-member thin-snapshot behavior.
+
+Tests cover six MSVC/GNU target spellings, ordinary/bigobj objects, reverse
+selections, duplicate names, opaque unselected payloads, GNU/COFF/BSD name
+tables, cross-archive/raw mixtures, selected thin/proxy snapshots, unread missing
+members and external byte budgets. LLVM archive listings and independently
+linked PE controls verify container/member identity and materialized import
+tables. Native Windows Go/llgo calls cover named/data/ordinal imports, origin
+selection, deleted sources, failed-root retry and ordinary/COMDAT lifecycle at
 `-O0`/`-O2`.
 
 ## Weak externals
