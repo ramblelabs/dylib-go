@@ -18,6 +18,7 @@ captures, and native state that their C API does not permit sharing.
 | Owner state | New calls/lookups/leases | Existing calls/leases | Cleanup |
 | --- | --- | --- | --- |
 | Open | Accepted | May overlap or nest | None |
+| Unpublished rollback failed | Stored link and cleanup error | No image published | Retains image, libraries and provider leases; call `Close` |
 | Retiring after Close starts | `ErrClosed` | Retain resources; existing lease calls can finish unregister/join | Waits without an invocation lock |
 | Cleanup failed | `ErrClosed` | None | Retains unfinished image/library resources and provider leases; retry `Close` |
 | Closed | `ErrClosed` | None | Completed |
