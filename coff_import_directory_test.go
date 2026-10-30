@@ -468,8 +468,14 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 						for _, source := range sources {
 							load(t, s, source.Path)
 						}
-						if err := s.Link("unselected_source_symbol"); err == nil || s.image != nil || len(s.libs) != 0 {
-							t.Fatal("unselected source supplied a root or opened DLLs", err)
+						// Selected objects are eager roots. Link retains their
+						// DLLs on failure for retry, just as for raw objects;
+						// only unselected providers must remain unavailable.
+						if err := s.Link("unselected_source_symbol"); err == nil || err.Error() != "unresolved symbol unselected_source_symbol" {
+							t.Fatal("unselected root should remain unresolved", err)
+						}
+						if s.image != nil || len(s.files) != staged || len(s.libs) != 2 || len(s.dllHandles) != 2 || s.dllHandles["first.dll"] == 0 || s.dllHandles["second.dll"] == 0 {
+							t.Fatal("unexpected retry state", "files", len(s.files), "DLLs", len(s.libs), s.dllHandles)
 						}
 					} else {
 						if err := s.LoadCOFFImportDirectory(paths...); err != nil {
