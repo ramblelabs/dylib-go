@@ -13,6 +13,7 @@ import (
 type peImportFixture struct {
 	data            []byte
 	file            string
+	boundObject     string
 	width           uint32
 	base            uint64
 	directoryOffset uint64
@@ -145,21 +146,11 @@ func buildPEImportFixture(t *testing.T, target, opt, shape string) peImportFixtu
 	if width == 4 {
 		prelude = ".def @feat.00; .scl 3; .type 0; .endef\n.set @feat.00,1\n"
 	}
-	assembly := prelude + `.section .bound,"dr"
-.long 1
-.short first_name-bound_start,2
-.long 2
-.short kernel_name-bound_start,0
-.long 3
-	.short second_name-bound_start,0
-.long 0xffffffff
-.short second_name-bound_start,0
-.zero 8
-first_name: .asciz "pe-first.dll"
-kernel_name: .asciz "kernel32.dll"
-second_name: .asciz "pe-second.dll"
-`
-	assembly = strings.Replace(assembly, ".long 1\n", "bound_start:\n.long 1\n", 1)
+	bound, err := os.ReadFile("testdata/coff_bound.S")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assembly := prelude + string(bound)
 	word := ".quad"
 	if width == 4 {
 		word = ".long"
@@ -215,7 +206,7 @@ second_name: .asciz "pe-second.dll"
 		t.Fatal(err)
 	}
 	defer image.Close()
-	f := peImportFixture{data: data, file: output, width: width, sections: image.Sections}
+	f := peImportFixture{data: data, file: output, boundObject: metadata, width: width, sections: image.Sections}
 	f.directoryOffset = uint64(le.Uint32(data[60:])) + 24
 	switch h := image.OptionalHeader.(type) {
 	case *pe.OptionalHeader32:

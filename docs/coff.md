@@ -198,9 +198,11 @@ fixups, grouped metadata and malformed later fragments also prevent conversion
 without changing the original object.
 
 This form requires at most one import `.text` section and self-contained metadata
-references. The bounded cross-object extension is described below. Full bound-import-directory metadata,
-delay imports, auto-import/pseudo-relocations and arbitrary inline code remain
+references. The bounded cross-object extension is described below. Automatic
+auxiliary bound-directory discovery, auto-import/pseudo-relocations and arbitrary inline code remain
 unqualified.
+Explicit auxiliary bound metadata can be [inspected separately](pe-imports.md#loading-and-verification).
+Recognized delay imports use the separate [eager policy](#raw-delay-imports).
 Complete DLLs continue to use the OS loader for those native table layouts.
 
 Compiler-produced AMD64/ARM64/i386 objects and rejection cases run on all
