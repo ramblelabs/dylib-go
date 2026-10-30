@@ -137,6 +137,8 @@ static LONG WINAPI recover(EXCEPTION_POINTERS *exception) {
     DWORD code=exception->ExceptionRecord->ExceptionCode;
     if((code&0xffffff00u)!=0xc06d0000u || exception->ExceptionRecord->NumberParameters!=1)
         return EXCEPTION_CONTINUE_SEARCH;
+    if(exception->ExceptionRecord->ExceptionFlags&EXCEPTION_NONCONTINUABLE)
+        return EXCEPTION_CONTINUE_SEARCH;
     DelayLoadInfo *info=(DelayLoadInfo *)exception->ExceptionRecord->ExceptionInformation[0];
     if(!info || info->cb!=sizeof(*info) || !info->pidd || info->pidd->grAttrs!=dlattrRva || !info->ppfn)
         return EXCEPTION_CONTINUE_SEARCH;

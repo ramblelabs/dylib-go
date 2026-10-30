@@ -9,8 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -302,10 +304,54 @@ func newLazyProbeEntry(t *testing.T, s *Session, probe *lazyEntryProbe) {
 
 func TestNativeCOFFLazyEntryBoundary(t *testing.T) {
 	needNative(t)
+	selected := os.Getenv("DYLIB_LAZY_BOUNDARY_OPT")
+	if selected == "" {
+		// A broken native exception/unwind boundary can terminate the whole
+		// process without a Go traceback. Preserve its actual exit status and
+		// isolate each optimization, including native DLL/TLS cleanup.
+		executable, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, opt := range []string{"-O0", "-O2"} {
+			t.Run(opt, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+				defer cancel()
+				pattern := "^TestNativeCOFFLazyEntryBoundary$/^" + regexp.QuoteMeta(opt) + "$"
+				command := exec.CommandContext(ctx, executable, "-test.run="+pattern, "-test.v")
+				command.Env = append(os.Environ(), "DYLIB_LAZY_BOUNDARY_OPT="+opt)
+				output, err := command.CombinedOutput()
+				if err != nil || ctx.Err() != nil {
+					var status uint32
+					if exit, ok := err.(*exec.ExitError); ok {
+						status = uint32(exit.ExitCode())
+					}
+					t.Fatalf("native boundary exited with %#x: %v; context=%v\n%s", status, err, ctx.Err(), output)
+				}
+				if !bytes.Contains(output, []byte("--- PASS: TestNativeCOFFLazyEntryBoundary ")) {
+					t.Fatalf("missing child boundary execution\n%s", output)
+				}
+				// Keep individual native PASS records without duplicating the
+				// parent's root/optimization records or test protocol markers.
+				for _, line := range strings.Split(string(output), "\n") {
+					if strings.Contains(line, "--- PASS: "+t.Name()+"/") {
+						t.Log(strings.TrimSpace(line))
+					}
+				}
+			})
+		}
+		return
+	}
+	if selected != "-O0" && selected != "-O2" {
+		t.Fatal("invalid native boundary optimization", selected)
+	}
 	if native.COFFDelayHelper() == 0 {
 		t.Fatal("native Windows delay boundary unavailable")
 	}
 	for _, opt := range []string{"-O0", "-O2"} {
+		if opt != selected {
+			continue
+		}
 		t.Run(opt, func(t *testing.T) {
 			s := nativeInputSession(t, "testdata/cofflazy/probe.c", "library", opt)
 			targetAddress, err := s.Lookup("targets")
