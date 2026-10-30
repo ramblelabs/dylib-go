@@ -170,10 +170,13 @@ func (g coffImportGraph) convertSingle(o *object, indexes map[string]int) (*obje
 	public := ""
 	for _, s := range o.symbols {
 		if s.global && s.section == iat && s.value == 0 && strings.HasPrefix(s.name, "__imp_") {
-			if public != "" {
+			name := strings.TrimPrefix(s.name, "__imp_")
+			// GNU i386 --compat-implib defines two names for this IAT cell.
+			// The existing x86 normalization gives both the same public name.
+			if public != "" && (o.info.Arch != "386" || public != name) {
 				return nil, false
 			}
-			public = strings.TrimPrefix(s.name, "__imp_")
+			public = name
 		}
 	}
 	if public == "" {
