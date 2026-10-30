@@ -4,7 +4,10 @@ lazy_entry:
 movabsq $0x23456780, %r11
 cmpq $0, (%r11)
 je lazy_slow
-jmp *(%r11)
+// Force REX.W+B: LLVM otherwise omits W, which Windows' tail unwinder
+// requires. The prefix extends the assembler's RBX memory operand to R11.
+.byte 0x49
+jmp *(%rbx)
 .seh_proc lazy_slow
 lazy_slow:
 pushq %rbp
@@ -50,5 +53,8 @@ movq 80(%rsp), %rsi
 movabsq $0x23456780, %r11
 addq $224, %rsp
 popq %rbp
-jmp *(%r11)
+// Force REX.W+B: LLVM otherwise omits W, which Windows' tail unwinder
+// requires. The prefix extends the assembler's RBX memory operand to R11.
+.byte 0x49
+jmp *(%rbx)
 .seh_endproc

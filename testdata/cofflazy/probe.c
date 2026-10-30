@@ -10,7 +10,11 @@ EXPORT uintptr_t factory_cell;
 EXPORT uintptr_t recovery_target, recovery_module;
 EXPORT volatile LONG native_exceptions;
 EXPORT DWORD probe_thread;
-static PVOID handler;
+static PVOID handler, continue_handler;
+// Windows invokes continue handlers even after a VEH recovers. Go's final
+// continue handler otherwise treats this foreign exception as fatal. Only
+// suppress that path for the exact record recovered on this native thread.
+static _Thread_local EXCEPTION_RECORD *recovered_exception;
 static int recovery_mode;
 
 typedef struct { int32_t a,b; } Pair;
@@ -146,13 +150,28 @@ static LONG WINAPI recover(EXCEPTION_POINTERS *exception) {
         if((code&0xff)==ERROR_MOD_NOT_FOUND) info->hmodCur=(HMODULE)recovery_module;
         else info->pfnCur=(FARPROC)recovery_target;
     }
+    recovered_exception=exception->ExceptionRecord;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+static LONG WINAPI continue_recovered(EXCEPTION_POINTERS *exception) {
+    if(exception->ExceptionRecord!=recovered_exception) return EXCEPTION_CONTINUE_SEARCH;
+    recovered_exception=0;
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 EXPORT int32_t configure_handler(int32_t mode,int32_t unused) {
     (void)unused;SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOGPFAULTERRORBOX);
     if(handler) {if(!RemoveVectoredExceptionHandler(handler)) return -2;handler=0;}
-    recovery_mode=mode;native_exceptions=0;
-    if(mode) {handler=AddVectoredExceptionHandler(1,recover);if(!handler) return -1;}
+    if(continue_handler) {if(!RemoveVectoredContinueHandler(continue_handler)) return -3;continue_handler=0;}
+    recovered_exception=0;recovery_mode=mode;native_exceptions=0;
+    if(mode) {
+        continue_handler=AddVectoredContinueHandler(1,continue_recovered);
+        if(!continue_handler) return -4;
+        handler=AddVectoredExceptionHandler(1,recover);
+        if(!handler) {
+            RemoveVectoredContinueHandler(continue_handler);continue_handler=0;
+            return -1;
+        }
+    }
     return 0;
 }
 

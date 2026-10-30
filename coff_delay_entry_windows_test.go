@@ -3,6 +3,7 @@
 package dylib
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -146,7 +147,14 @@ func TestNativeCOFFLazyEntryTerminal(t *testing.T) {
 					command.Env = append(os.Environ(), "DYLIB_LAZY_TERMINAL_LIBRARY="+library, "DYLIB_LAZY_TERMINAL_CODE="+strconv.FormatUint(uint64(failure), 10))
 					output, err := command.CombinedOutput()
 					exit, ok := err.(*exec.ExitError)
-					if ctx.Err() != nil || !ok || uint32(exit.ExitCode()) != 0xc06d0000|failure {
+					code := uint32(0xc06d0000) | failure
+					// The Go executable's last continue handler reports the native
+					// exception and exits with 2; other hosts retain the NT status.
+					// Require the exact native report before accepting that exit.
+					goFatal := ok && exit.ExitCode() == 2 &&
+						bytes.Contains(output, []byte(fmt.Sprintf("Exception %#x ", code))) &&
+						bytes.Contains(output, []byte("signal arrived during external code execution"))
+					if ctx.Err() != nil || !ok || uint32(exit.ExitCode()) != code && !goFatal {
 						t.Fatalf("native delay exception: %v, context=%v\n%s", err, ctx.Err(), output)
 					}
 				})

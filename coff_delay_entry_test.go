@@ -29,7 +29,7 @@ func TestCOFFLazyEntryAssembler(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				assembly := string(source)
+				assembly := strings.ReplaceAll(string(source), "\r\n", "\n")
 				if wide {
 					// Spell the independently assembled halfwords explicitly, so
 					// the reference cannot share the emitter's shift arithmetic.
