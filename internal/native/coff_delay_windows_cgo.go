@@ -81,19 +81,6 @@ static void dylib_coff_delay_configure(uintptr_t address, uintptr_t callback,
     entry->name = (const char *)name;
     entry->ordinal = ordinal;
 }
-static uintptr_t dylib_coff_delay_module(dylib_coff_delay_request *request) {
-    return (uintptr_t)request->info.hmodCur;
-}
-static uintptr_t dylib_coff_delay_target(dylib_coff_delay_request *request) {
-    return (uintptr_t)request->info.pfnCur;
-}
-static void dylib_coff_delay_result(dylib_coff_delay_request *request,
-        uintptr_t target, uintptr_t module, DWORD exception, DWORD native_error) {
-    request->info.pfnCur = (FARPROC)target;
-    request->info.hmodCur = (HMODULE)module;
-    request->info.dwLastError = native_error;
-    request->exception = exception;
-}
 */
 import "C"
 
@@ -121,7 +108,7 @@ func ReadCOFFDelayRequest(address uintptr) (COFFDelayRequest, bool) {
 	return COFFDelayRequest{
 		Owner: uintptr(request.owner), Slot: uintptr(request.slot), Thread: uintptr(request.thread),
 		Recovering: request.recovering != 0,
-		Module:     uintptr(C.dylib_coff_delay_module(request)), Address: uintptr(C.dylib_coff_delay_target(request)),
+		Module:     *(*uintptr)(unsafe.Pointer(&request.info.hmodCur)), Address: *(*uintptr)(unsafe.Pointer(&request.info.pfnCur)),
 		NativeError: uint32(request.info.dwLastError), Exception: uint32(request.exception),
 	}, true
 }
@@ -131,6 +118,12 @@ func SetCOFFDelayResult(address, target, module uintptr, exception, nativeError 
 		return false
 	}
 	pointer := *(*unsafe.Pointer)(unsafe.Pointer(&address))
-	C.dylib_coff_delay_result((*C.struct_dylib_coff_delay_request)(pointer), C.uintptr_t(target), C.uintptr_t(module), C.DWORD(exception), C.DWORD(nativeError))
+	request := (*C.struct_dylib_coff_delay_request)(pointer)
+	// Use the SDK-derived field addresses directly, avoiding another cgo
+	// call from the callback just to update native request storage.
+	*(*uintptr)(unsafe.Pointer(&request.info.pfnCur)) = target
+	*(*uintptr)(unsafe.Pointer(&request.info.hmodCur)) = module
+	request.info.dwLastError = C.DWORD(nativeError)
+	request.exception = C.DWORD(exception)
 	return true
 }
