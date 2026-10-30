@@ -84,6 +84,10 @@ The Go decoder validates the complete fast/fallback thunk, its absolute initial
 IAT pointer, a unique shared resolver and its 32-byte RVA descriptor in
 `.text$2`, and the DLL name provider. Names and ordinals come from the separate
 lookup table; the initial fallback address never supplies an export identity.
+GNU i386 `--compat-implib` aliases use the same single-slot name validation as
+ordinary imports: both normalized names retain one imported identity and IAT
+slot, with exactly one callable thunk. Mixed members preserve both original
+symbol indices and ordinary references to either public IAT spelling.
 The recognized resolver/cache/descriptor/name helpers must be metadata-only:
 no ordinary exports, constructors, TLS, COMDAT groups or unclaimed data.
 Successful conversion creates private import views, leaving staged snapshots
@@ -101,6 +105,11 @@ delay-specific unloading. Complete OS-loaded DLLs retain their native semantics.
 Tests inspect real GNU Binutils `--output-delaylib` amd64/386 archives and
 Clang-assembled compatible templates for all three architectures, including
 bigobj, split archives, malformed references and missing/ambiguous providers.
+The genuine GNU i386 compatibility fixture additionally has independent PE
+link controls and native Windows Go calls through both original IAT spellings.
+System-loaded controls execute their lazy helper; raw sessions require explicit
+eager binding. Default rejection, same-slot identity, retry, unused members and
+retained/discarded mixed-member lifecycle entries are tested independently.
 Native Windows Go and llgo tests execute scalar/name/ordinal imports, floating
 arguments, struct values/results/pointers and variadic doubles at `-O0`/`-O2`;
 32-bit Windows uses Go. Repeated calls, provider/dependency retry, default

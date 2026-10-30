@@ -166,16 +166,8 @@ func (g coffImportGraph) convertDelay(o *object, owners map[*object]bool) (*obje
 	if o.sections[iat].size != width || o.sections[ilt].size != width || indexes[".idata$7"] != 0 && o.sections[indexes[".idata$7"]].size != 0 {
 		return nil, false
 	}
-	public := ""
-	for _, s := range o.symbols {
-		if s.global && s.section == iat && s.value == 0 && strings.HasPrefix(s.name, "__imp_") {
-			if public != "" {
-				return nil, false
-			}
-			public = strings.TrimPrefix(s.name, "__imp_")
-		}
-	}
-	if public == "" {
+	public, ok := coffSingleImportName(o, iat)
+	if !ok {
 		return nil, false
 	}
 	body := o.sections[text].data
@@ -275,7 +267,7 @@ func (g coffImportGraph) convertDelay(o *object, owners map[*object]bool) (*obje
 	}
 	copy := *o
 	copy.sections, copy.relocs, copy.groups, copy.symbols = nil, nil, nil, nil
-	code := false
+	thunks := 0
 	for _, s := range o.symbols {
 		if !s.global {
 			continue
@@ -292,10 +284,12 @@ func (g coffImportGraph) convertDelay(o *object, owners map[*object]bool) (*obje
 		if s.value != 0 || s.section != iat && (s.section != text || s.name != public) || s.section == iat && s.name != "__imp_"+public {
 			return nil, false
 		}
-		code = code || s.section == text
+		if s.section == text {
+			thunks++
+		}
 		copy.symbols = append(copy.symbols, symbol{name: s.name, section: -4, global: true, imported: &coffImportSymbol{entry: entry, indirect: s.section == iat}})
 	}
-	if !code || len(copy.symbols) != 2 {
+	if thunks != 1 {
 		return nil, false
 	}
 	copy.info.Symbols, copy.info.Unsupported = nil, nil

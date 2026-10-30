@@ -26,7 +26,7 @@ func delayProvider(t *testing.T, target, opt string) (dir, dll string) {
 
 // Link the exact raw delay stubs with an independent, executable C helper.
 // Eager raw binding never selects this helper; the system control calls it.
-func linkDelayControl(t *testing.T, target, opt, dir, consumer, dependency string, parts [][]byte) string {
+func linkDelayControl(t *testing.T, target, opt, dir, consumer, dependency string, parts [][]byte, extraArgs ...string) string {
 	t.Helper()
 	machine, width := uint16(0x8664), 8
 	if target[:7] == "aarch64" {
@@ -50,6 +50,7 @@ func linkDelayControl(t *testing.T, target, opt, dir, consumer, dependency strin
 	helper := compile(t, "testdata/coffdelay/control.c", filepath.Join(dir, "helper.obj"), "--target="+target, opt)
 	output := filepath.Join(dir, "control.dll")
 	args := []string{"/dll", "/noentry", "/nodefaultlib", "/out:" + output, "/export:delay_call", "/export:observed", "/export:release_provider", "/section:.rdata,rw", consumer, dependency, helper, imports}
+	args = append(args, extraArgs...)
 	// LLD's synthetic ordinary imports share .idata$* with GNU delay archives.
 	// Keep the control's delay tables separate; instructions, symbols, relocation
 	// targets and descriptor contents remain the original assembler output.

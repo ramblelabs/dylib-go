@@ -121,6 +121,11 @@ func TestCOFFDelayHelperCacheBounds(t *testing.T) {
 }
 
 func TestNativeCOFFDelayMixed(t *testing.T) {
+	testNativeCOFFDelayMixed(t, false)
+}
+
+func testNativeCOFFDelayMixed(t *testing.T, compat bool) {
+	t.Helper()
 	if runtime.GOOS != "windows" {
 		t.Skip("native mixed delay imports require Windows")
 	}
@@ -136,7 +141,13 @@ func TestNativeCOFFDelayMixed(t *testing.T) {
 				}
 				dependency := compile(t, source, source+".obj", "--target="+target, opt)
 				consumerSource := filepath.Join(dir, "indirect.c")
-				if err := os.WriteFile(consumerSource, []byte("extern int (**mixed_import_address)(int,int); int mixed_indirect(int a,int b){return (*mixed_import_address)(a,b);}"), 0600); err != nil {
+				consumerCode := "extern int (**mixed_import_address)(int,int); int mixed_indirect(int a,int b){return (*mixed_import_address)(a,b);}"
+				indirectResult, indirectCalls := int32(42), int32(1)
+				if compat {
+					consumerCode = "extern int (**mixed_import_address)(int,int),(**mixed_compat_address)(int,int); int mixed_indirect(int a,int b){if(mixed_import_address!=mixed_compat_address)return -1000; return (*mixed_import_address)(a,b)+(*mixed_compat_address)(a,b);}"
+					indirectResult, indirectCalls = 84, 2
+				}
+				if err := os.WriteFile(consumerSource, []byte(consumerCode), 0600); err != nil {
 					t.Fatal(err)
 				}
 				consumer := compile(t, consumerSource, consumerSource+".obj", "--target="+target, opt)
@@ -145,6 +156,9 @@ func TestNativeCOFFDelayMixed(t *testing.T) {
 					t.Fatal(err)
 				}
 				extra := delayMixedAssembly(target, selection != "ordinary")
+				if compat {
+					extra += compatImportAlias("add") + ".section .rdata$mixiat,\"dr\"\n.p2align 2\n.global _mixed_compat_address\n_mixed_compat_address:\n.long ___imp_add\n"
+				}
 				parts, _ := delayFixturePartsExtra(t, target, []delayFixtureEntry{{"add", "add", 0}}, extra)
 				var override []byte
 				if selection == "discard" {
@@ -223,14 +237,14 @@ func TestNativeCOFFDelayMixed(t *testing.T) {
 						call(t, observer, "provider_calls", 0, 0, count)
 						call(t, s, "mixed_read", 0, 0, read)
 						call(t, s, "mixed", 20, 22, 42)
-						call(t, s, "mixed_indirect", 20, 22, 42)
+						call(t, s, "mixed_indirect", 20, 22, indirectResult)
 						call(t, s, "mixed_dependency", 20, 22, 43)
 						if err := s.Close(); err != nil {
 							t.Fatal(err)
 						}
-						want := int32(4)
+						want := 3 + indirectCalls
 						if selection == "discard" {
-							want = 2
+							want = 1 + indirectCalls
 						}
 						call(t, observer, "provider_calls", 0, 0, want)
 					})

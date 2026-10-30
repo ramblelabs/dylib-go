@@ -161,12 +161,9 @@ func (g coffImportGraph) convertPure(o *object) (*object, bool) {
 	return g.convertSingle(o, indexes)
 }
 
-func (g coffImportGraph) convertSingle(o *object, indexes map[string]int) (*object, bool) {
-	iat, force := indexes[".idata$5"], indexes[".idata$7"]
-	width := uint64(o.info.Bits / 8)
-	if iat == 0 || force == 0 || (width != 4 && width != 8) || o.sections[iat].size != width || len(o.sections[iat].data) != int(width) || o.sections[force].size != 4 {
-		return nil, false
-	}
+// Both ordinary and eager-delay single-import templates use the existing
+// normalized public names. Only i386 compatibility names may share an IAT cell.
+func coffSingleImportName(o *object, iat int) (string, bool) {
 	public := ""
 	for _, s := range o.symbols {
 		if s.global && s.section == iat && s.value == 0 && strings.HasPrefix(s.name, "__imp_") {
@@ -174,12 +171,22 @@ func (g coffImportGraph) convertSingle(o *object, indexes map[string]int) (*obje
 			// GNU i386 --compat-implib defines two names for this IAT cell.
 			// The existing x86 normalization gives both the same public name.
 			if public != "" && (o.info.Arch != "386" || public != name) {
-				return nil, false
+				return "", false
 			}
 			public = name
 		}
 	}
-	if public == "" {
+	return public, public != ""
+}
+
+func (g coffImportGraph) convertSingle(o *object, indexes map[string]int) (*object, bool) {
+	iat, force := indexes[".idata$5"], indexes[".idata$7"]
+	width := uint64(o.info.Bits / 8)
+	if iat == 0 || force == 0 || (width != 4 && width != 8) || o.sections[iat].size != width || len(o.sections[iat].data) != int(width) || o.sections[force].size != 4 {
+		return nil, false
+	}
+	public, ok := coffSingleImportName(o, iat)
+	if !ok {
 		return nil, false
 	}
 	dll, ok := g.longImportDLL(o, force)
