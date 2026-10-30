@@ -15,7 +15,8 @@ jobs:
   native:
     name: llgo / ${{ matrix.target }} / ${{ matrix.mode }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.target == 'darwin-amd64' && 180 || 75 }}
+    # Windows ARM64 runs an independent Go suite and both llgo native suites.
+    timeout-minutes: ${{ matrix.target == 'darwin-amd64' && 180 || matrix.target == 'windows-arm64' && 120 || 75 }}
     strategy:
       fail-fast: false
       matrix:
