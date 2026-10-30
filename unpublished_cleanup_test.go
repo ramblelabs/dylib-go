@@ -32,7 +32,7 @@ func unpublishedCleanupFixture(t *testing.T) (*Session, *Session, *image, func(i
 	if err != nil {
 		t.Fatal(err)
 	}
-	im, err := newImage(objects, defs, s.external, nil, false, false)
+	im, err := newImage(objects, defs, s.external, nil, false, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

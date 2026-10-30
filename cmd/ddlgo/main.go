@@ -36,6 +36,7 @@ func run(args []string, output io.Writer) error {
 		emulatedTLS := fs.Bool("emulated-tls", false, "enable image-owned Clang emulated TLS")
 		nativeTLS := fs.Bool("native-tls", false, "enable supported image-owned Unix native TLS models")
 		delayImports := fs.Bool("eager-delay-imports", false, "bind recognized raw COFF delay imports at Link")
+		lazyImports := fs.Bool("lazy-delay-imports", false, "resolve recognized raw COFF delay imports on first call")
 		convention := fs.String("abi", "default", "C calling convention: default, cdecl, stdcall, fastcall, thiscall, win64, sysv64")
 		variadicFrom := fs.Int("variadic-from", -1, "number of fixed parameters for a concrete variadic call shape")
 		linkageName := fs.String("symbol", "", "exact linkage name, overriding the Go declaration name")
@@ -69,8 +70,13 @@ func run(args []string, output io.Writer) error {
 			return err
 		}
 		mode := dylib.DelayImportsDisabled
+		if *delayImports && *lazyImports {
+			return fmt.Errorf("choose eager-delay-imports or lazy-delay-imports")
+		}
 		if *delayImports {
 			mode = dylib.DelayImportsEager
+		} else if *lazyImports {
+			mode = dylib.DelayImportsLazy
 		}
 		return executeCall(input, dylib.Options{ProcessSymbols: *process, KeepLibraries: *keep, EmulatedTLS: *emulatedTLS, NativeTLS: *nativeTLS, DelayImports: mode}, output)
 	default:

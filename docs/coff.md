@@ -73,12 +73,12 @@ ARM64EC hybrid imports and linker directives for automatic default-library selec
 
 ## Raw delay imports
 
-Recognized GNU-style delay-import function stubs support explicit eager binding
-on Windows amd64/arm64/386. Set `Options.DelayImports` to `DelayImportsEager`.
+Recognized GNU-style delay-import function stubs support explicit eager or lazy
+binding on Windows amd64/arm64/386. `Options.DelayImports` selects the policy.
 The zero value, `DelayImportsDisabled`, rejects selected delay imports before
 opening their DLLs or initializing the raw image. Unused archive imports remain
 inert. `Inspect` reports `ImportInfo.Delay` independently of that policy and
-opens no DLL. The testing CLI accepts `call -eager-delay-imports`.
+opens no DLL. Complete OS-loaded DLLs retain their own native semantics.
 
 The Go decoder validates the complete fast/fallback thunk, its absolute initial
 IAT pointer, a unique shared resolver and its 32-byte RVA descriptor in
@@ -107,8 +107,8 @@ Clang-assembled compatible templates for all three architectures, including
 bigobj, split archives, malformed references and missing/ambiguous providers.
 The genuine GNU i386 compatibility fixture additionally has independent PE
 link controls and native Windows Go calls through both original IAT spellings.
-System-loaded controls execute their lazy helper; raw sessions require explicit
-eager binding. Default rejection, same-slot identity, retry, unused members and
+System-loaded controls execute their original lazy helper. Raw sessions select
+explicit eager or image-owned lazy binding. Default rejection, same-slot identity, retry, unused members and
 retained/discarded mixed-member lifecycle entries are tested independently.
 Native Windows Go and llgo tests execute scalar/name/ordinal imports, floating
 arguments, struct values/results/pointers and variadic doubles at `-O0`/`-O2`;
@@ -126,10 +126,101 @@ providers. Stub members may retain ordinary code in separate text sections,
 data/BSS, COMDAT groups, dependencies and initialization/finalization records.
 The same mixed-member overlay preserves original indices and rejects ordinary
 references into private thunk/table storage. Helpers remain metadata-only.
-Imported data, auxiliary bound/unload
-tables, nonzero timestamps, legacy VA descriptors, other resolver/thunk shapes,
-and full lazy execution remain unsupported. ARM64 uses compatible assembler
+Imported data, original auxiliary bound/unload tables, nonzero timestamps,
+legacy VA descriptors and other resolver/thunk shapes remain unsupported. ARM64 uses compatible assembler
 controls; no GNU ARM64 delay-archive producer is qualified.
+
+
+### Lazy resolution, hooks and ownership
+
+`DelayImportsLazy` creates native entries at `Link` without loading the delayed
+providers. Aliases of one DLL/name-or-ordinal identity share a canonical cell.
+The first selected importer fixes each DLL's origin; `LibraryPaths` precedes
+that origin and the native loader search path. Explicitly loaded matching DLLs
+remain borrowed from the session. `Define` overrides and runtime helpers keep
+their existing priority.
+
+The parser, layout, caches and resolver policy use Go. A small SDK-based C
+boundary calls the public Windows callback API, publishes the canonical target
+and raises failures after Go returns. Go-generated amd64/arm64/386 entries
+preserve the supported incoming native arguments and tail-call the target.
+Internal x64/ARM64 slow frames always have owned Windows unwind tables,
+including when `RegisterUnwind` is false for the user's raw objects. This does
+not register unsupported language exception handlers or missing user frames.
+
+`Options.DelayHooks` supplies value-based Go notifications and failure hooks:
+
+| Event | Hook | Accepted result |
+| --- | --- | --- |
+| `DelayImportStartProcessing` | `Notify` | `Address` bypasses lookup; an optional `Module` can retain its provider |
+| `DelayImportBeforeLoadLibrary` | `Notify` | A replacement `Module` |
+| `DelayImportBeforeGetProcAddress` | `Notify` | A replacement native `Address` |
+| `DelayImportLoadLibraryFailure` | `Failure` | A recovered `Module` |
+| `DelayImportGetProcAddressFailure` | `Failure` | A recovered native `Address` |
+| `DelayImportEndProcessing` | `Notify` | Result ignored; transfers no ownership |
+
+`DelayImportInfo` preserves DLL/public/export identity, ordinal, current module
+and address, native error code and a Go error. `OwnModule` transfers exactly
+one acquired library reference for an accepted module result. Borrowed modules
+and address-only replacements must remain alive through calls, finalizers and
+unload. Use native calling conventions and retained compiled/C callback entries
+for callable addresses.
+
+Hooks run without provider/session locks, including on C-created native
+threads. Concurrent first calls may issue notifications more than once; one
+canonical target wins. Duplicate loader references are released independently;
+a failed duplicate release stays owned for cleanup retry while the canonical
+target remains usable. Same-thread recursion into the same unresolved import
+and hook panics become native invalid-parameter failures. The committed target
+is available to a reentrant end notification.
+
+An unrecovered load or lookup raises the SDK delay exception with native
+`DelayLoadInfo` after the Go callback returns. Invalid hook results and recursion
+use the native invalid-parameter path. Native handlers may recover a module,
+then separately recover its missing procedure. A changed `hmodCur` transfers
+one acquired module reference; acquiring another reference to an unchanged
+handle remains the handler's responsibility. Address-only recovery retains its
+provider externally. Keep native exception handling within compatible native
+frames. A Go executable's final continue handler applies its own fatal-exit
+policy; the native test fixtures pair recovery VEH/VCH handlers within their
+native thread and exception scope.
+
+The SDK information describes image-owned canonical cells and descriptors,
+with RVAs relative to the raw image. Original helper/table adjacency,
+`__ImageBase` assumptions and the binary `__pfnDliNotifyHook2` /
+`__pfnDliFailureHook2` variable ABI are outside this interface. AVX YMM/ZMM
+extensions and AArch64 scalable-vector calling conventions are unqualified.
+
+### Explicit unload and finalization
+
+`Session.UnloadDelayImports` resets lazy cells and releases owned delayed DLL
+references. Later calls resolve again through the same public symbols and IAT
+aliases. Explicitly loaded and borrowed handles keep their original owners.
+This explicit operation releases owned delayed references even when automatic
+session cleanup uses `KeepLibraries`.
+
+Stop unmanaged native callers and callbacks before unload. Managed calls,
+initializers and persistent symbol leases return `ErrDelayImportsBusy`; new
+calls, lookups and mutations also return that error while unload is running.
+A concurrent `Close` waits for the unload's retained image and preserves session
+retirement. Release failures retain the failed handle and restore its cached
+targets for retry.
+
+Image finalizers and thread destructors can first resolve an import after the
+session's ordinary fields have been detached. The independent provider owner
+keeps paths, hook closures, registry identities and handles available. Cleanup
+releases delayed providers while code, unwind and TLS support remain valid,
+drains registrations created by native detach, then unregisters tables and
+frees the mapping. A failed cleanup retains the remaining ownership for retry.
+`KeepLibraries` deliberately preserves provider references for process lifetime.
+
+Native tests cover object/archive/cross-archive calls, actual GNU amd64/i386
+archives and i386 compatibility archives, mixed scalar/record/pointer/variadic
+consumers, cache/reset/reload, Go failure hooks, native SDK recovery ownership,
+retirement-time first resolution, retained libraries and eight concurrent
+C-created first callers with managed allocation/GC at `-O0`/`-O2`.
+The testing CLI accepts `call -eager-delay-imports` or
+`call -lazy-delay-imports`; the two flags are mutually exclusive.
 
 ## Self-contained import directories
 

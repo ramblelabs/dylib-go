@@ -35,6 +35,8 @@ type Options struct {
 	// The default rejects selected delay imports. Eager mode binds before native
 	// initialization and owns DLLs like ordinary imports; lazy helpers are bypassed.
 	DelayImports DelayImportMode
+	// DelayHooks supplies Go notifications/failure recovery for raw lazy imports.
+	DelayHooks DelayImportHooks
 	// EmulatedTLS enables Clang -femulated-tls for raw objects and archives.
 	// Values belong to native OS threads, not Go goroutines. Supports constant
 	// values, documented C++ thread-exit registrations and Clang MSVC emulated
@@ -81,6 +83,7 @@ type Session struct {
 	defined       map[string]uintptr
 	image         *image
 	initializing  bool
+	unloading     bool
 	stagedImage   *image // Only scoped initialization calls can use this mapping.
 	failedImage   *image // Retain unpublished or partially cleaned code until Close succeeds.
 	initErr       error
@@ -110,6 +113,9 @@ func (s *Session) mutable() error {
 	}
 	if s.initializing {
 		return ErrInitializing
+	}
+	if s.unloading {
+		return ErrDelayImportsBusy
 	}
 	if s.image != nil {
 		return ErrLinked
@@ -544,6 +550,9 @@ func (s *Session) link(roots []string) error {
 	if s.initializing {
 		return ErrInitializing
 	}
+	if s.unloading {
+		return ErrDelayImportsBusy
+	}
 	for _, name := range roots {
 		if name == "" || strings.IndexByte(name, 0) >= 0 {
 			return fmt.Errorf("invalid root symbol name")
@@ -586,7 +595,11 @@ func (s *Session) link(roots []string) error {
 	if err != nil {
 		return err
 	}
-	im, err := newImage(objs, defs, s.external, imports, s.opts.EmulatedTLS, s.opts.NativeTLS)
+	lazy, err := newCOFFLazyImage(objs, imports, s.opts, s.dllHandles)
+	if err != nil {
+		return err
+	}
+	im, err := newImage(objs, defs, s.external, imports, s.opts.EmulatedTLS, s.opts.NativeTLS, lazy)
 	if err != nil {
 		if im != nil {
 			s.failedImage, s.initErr = im, err
@@ -741,6 +754,7 @@ type image struct {
 	defs                                   map[string]definition
 	aliases                                map[string]definition
 	imports                                map[*coffImport]uintptr
+	lazy                                   *coffLazyImage
 	common                                 map[string]commonAllocation
 	external                               func(string) uintptr
 	resolved                               map[string]uintptr
@@ -774,7 +788,7 @@ func alignUp(n, a uint64) uint64 {
 	}
 	return (n + a - 1) &^ (a - 1)
 }
-func newImage(objs []*object, defs map[string]definition, external func(string) uintptr, imports map[*coffImport]uintptr, emulatedTLS, nativeTLS bool) (result *image, resultErr error) {
+func newImage(objs []*object, defs map[string]definition, external func(string) uintptr, imports map[*coffImport]uintptr, emulatedTLS, nativeTLS bool, lazy *coffLazyImage) (result *image, resultErr error) {
 	tlsNeeded, err := checkTLSRuntime(objs, Options{EmulatedTLS: emulatedTLS, NativeTLS: nativeTLS})
 	if err != nil {
 		return nil, err
@@ -795,7 +809,7 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 		tlsNeeded = tlsNeeded || usesMSVCNativeTLS(objs)
 		objs, defs = coffTLSGuardObject(objs, defs)
 	}
-	im := &image{objects: objs, defs: defs, external: external, imports: imports, common: map[string]commonAllocation{}, resolved: map[string]uintptr{}, got: map[uintptr]uintptr{}, stubs: map[uintptr]uintptr{}, page: uint64(os.Getpagesize())}
+	im := &image{objects: objs, defs: defs, external: external, imports: imports, lazy: lazy, common: map[string]commonAllocation{}, resolved: map[string]uintptr{}, got: map[uintptr]uintptr{}, stubs: map[uintptr]uintptr{}, page: uint64(os.Getpagesize())}
 	im.aliases, err = weakAliases(objs)
 	if err != nil {
 		return nil, err
@@ -905,12 +919,15 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 			return nil, err
 		}
 	}
+	if size, err = im.lazy.layout(size, im.pointerSize, im.page); err != nil {
+		return nil, err
+	}
 	im.gotStart = size
 	im.gotNext = size
 	size += alignUp((count+1)*im.pointerSize, im.page)
 	im.stubStart = size
 	im.stubNext = size
-	size += alignUp((count+1)*16, im.page)
+	size += alignUp((count+1)*16+im.lazy.codeSize(), im.page)
 	// One page covers lifecycle/thread-exit thunks and the <=512-byte Darwin
 	// TLV and ELF TLS register-preserving entries, plus every relocation island.
 	size += im.page
@@ -957,6 +974,9 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 		if objs[0].info.Arch == "386" {
 			im.hooks[coffTLSArray] = 0x2c
 		}
+	}
+	if err := im.lazy.prepare(im); err != nil {
+		return nil, err
 	}
 	if e := im.fillStartupPadding(); e != nil {
 		return nil, e
@@ -1075,7 +1095,11 @@ func (im *image) close() error {
 		if err != nil {
 			return err
 		}
-		if !drained {
+		released, err := im.lazy.releaseProviders()
+		if err != nil {
+			return err
+		}
+		if !drained && !released {
 			break
 		}
 	}
@@ -1086,12 +1110,16 @@ func (im *image) close() error {
 	if err := im.coffTLS.close(native.Close); err != nil {
 		return err
 	}
+	if err := im.lazy.closeFunctions(); err != nil {
+		return err
+	}
 	im.lifecycle.Close()
 	im.emulatedTLS.Close()
 	if err := native.Free(im.mem); err != nil {
 		return err
 	}
 	im.mem = nil
+	im.lazy.forget()
 	im.initializers, im.finalizers = nil, nil
 	im.threadInitializers = nil
 	im.cInitializers = nil

@@ -171,6 +171,17 @@ static LONG WINAPI recover(EXCEPTION_POINTERS *exception) {
         if((code&0xff)==ERROR_MOD_NOT_FOUND) info->hmodCur=(HMODULE)recovery_module;
         else info->pfnCur=(FARPROC)recovery_target;
     }
+    else if(recovery_mode==4 || recovery_mode==5) {
+        if((code&0xff)==ERROR_MOD_NOT_FOUND) {
+            // Transfer a real, separately acquired loader reference to the
+            // image. The control DLL still retains its original reference.
+            HMODULE owned=0;
+            if(!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                    (LPCSTR)recovery_target,&owned)) return EXCEPTION_CONTINUE_SEARCH;
+            info->hmodCur=owned;
+        } else if(recovery_mode==5) info->pfnCur=(FARPROC)recovery_target;
+        else return EXCEPTION_CONTINUE_SEARCH;
+    }
     recovered_exception=exception->ExceptionRecord;
     return EXCEPTION_CONTINUE_EXECUTION;
 }

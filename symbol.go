@@ -37,6 +37,10 @@ func (s *Symbol) WithAddress(use func(uintptr) error) error {
 		s.owner.mu.Unlock()
 		return ErrClosed
 	}
+	if s.owner.unloading {
+		s.owner.mu.Unlock()
+		return ErrDelayImportsBusy
+	}
 	if use == nil {
 		s.owner.mu.Unlock()
 		return fmt.Errorf("dylib: nil symbol callback")

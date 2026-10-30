@@ -126,6 +126,9 @@ func (s *Session) prepareImports(objects []*object) (map[*coffImport]uintptr, er
 				addresses[entry] = p
 				continue
 			}
+			if entry.delay && s.opts.DelayImports == DelayImportsLazy {
+				continue
+			}
 			key := strings.ToLower(entry.dll)
 			h := s.dllHandles[key]
 			if h == 0 {

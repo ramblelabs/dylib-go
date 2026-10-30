@@ -392,7 +392,7 @@ func TestForeignPointerRelocations(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			im, e := newImage([]*object{f.obj}, defs, func(string) uintptr { return 0 }, nil, false, false)
+			im, e := newImage([]*object{f.obj}, defs, func(string) uintptr { return 0 }, nil, false, false, nil)
 			if e != nil {
 				t.Fatal(e)
 			}
