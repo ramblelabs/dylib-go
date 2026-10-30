@@ -49,6 +49,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] COFF bigobj and extended relocation tables, including high section indexes and real object/archive calls.
 - [x] COFF short import libraries, with DLL dependency and real call tests.
 - [x] Standard GNU COFF long import libraries, including MinGW consumer and genuine GNU dlltool fixture execution.
+- [x] GNU i386 compatibility names in single-import members, shared IAT storage after existing name normalization, original mixed-member indices and genuine producer/native Windows Go 386 calls.
 - [x] Verified GNU single-import templates mixed with ordinary sections, preserving code/data/BSS/lifecycle, original symbol indices, dependency extraction, failed-link retry and native Windows Go/llgo calls.
 - [x] Ordinary COMDAT sections in mixed GNU import members, preserving selection, associative lifecycle entries, lazy extraction and failed-link retry; native Windows Go/llgo tests cover retained and discarded groups.
 - [x] Contiguous multi-entry GNU import members for one DLL, reusing single-entry validation for function/data/const/name/ordinal slots, preserving ordinary sections/groups, and qualifying pure/mixed Windows Go/llgo calls, lifecycle selection, laziness and retry.
