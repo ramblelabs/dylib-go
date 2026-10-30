@@ -45,7 +45,7 @@ func dispatchCOFFLazyImport(address uintptr) (target uintptr) {
 	// No panic or exception may unwind through the public Go callback.
 	defer func() {
 		if recover() != nil {
-			native.SetCOFFDelayResult(address, 0, 0, 87, 87)
+			native.SetCOFFDelayResult(address, 0, 0, coffDelayInvalidParameter, coffDelayInvalidParameter)
 			target = 0
 		}
 	}()
@@ -57,7 +57,7 @@ func dispatchCOFFLazyImport(address uintptr) (target uintptr) {
 	image := coffLazyRegistry.images[request.Owner]
 	coffLazyRegistry.Unlock()
 	if image == nil || request.Slot >= uintptr(len(image.slots)) {
-		native.SetCOFFDelayResult(address, 0, 0, 87, 87)
+		native.SetCOFFDelayResult(address, 0, 0, coffDelayInvalidParameter, coffDelayInvalidParameter)
 		return 0
 	}
 	var recovery coffLazyResult

@@ -69,9 +69,9 @@ func delayProviderHooks(hooks DelayImportHooks) coffLazyHooks {
 		return func(event coffLazyEvent, info coffLazyInfo) coffLazyResult {
 			var fallback uint32
 			if event == coffLazyLoadFailure {
-				fallback = 126
+				fallback = coffDelayMissingModule
 			} else if event == coffLazyLookupFailure {
-				fallback = 127
+				fallback = coffDelayMissingProcedure
 			}
 			result := hook(DelayImportEvent(event), DelayImportInfo{
 				DLL: info.dll, Symbol: info.symbol, Name: info.name, Ordinal: info.ordinal,

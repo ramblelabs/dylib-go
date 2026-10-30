@@ -7,6 +7,13 @@ import (
 	"sync"
 )
 
+// Win32 failure classes consumed by the SDK VcppException boundary.
+const (
+	coffDelayInvalidParameter uint32 = 87
+	coffDelayMissingModule    uint32 = 126
+	coffDelayMissingProcedure uint32 = 127
+)
+
 // Private provider state is separate from Session: DLL detach callbacks can
 // resolve imports after Close has detached the session's ordinary libraries.
 // No provider lock may span a native loader call or a user hook.
@@ -116,7 +123,7 @@ var errCOFFLazyRecursion = errors.New("recursive resolution of the same delayed 
 // are copied from the native helper's stack-owned DelayLoadInfo after SEH returns.
 func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazyResult) (result coffLazyResult, exception uint32, cause error) {
 	if index < 0 || index >= len(p.slots) || thread == 0 {
-		return result, 87, fmt.Errorf("invalid delayed import request")
+		return result, coffDelayInvalidParameter, fmt.Errorf("invalid delayed import request")
 	}
 	slot := p.slots[index]
 	call := coffLazyCall{uintptr(index), thread}
@@ -131,7 +138,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 	}
 	if p.active[call] {
 		p.mu.Unlock()
-		return result, 87, errCOFFLazyRecursion
+		return result, coffDelayInvalidParameter, errCOFFLazyRecursion
 	}
 	p.active[call] = true
 	p.mu.Unlock()
@@ -140,7 +147,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 		delete(p.active, call)
 		p.mu.Unlock()
 		if value := recover(); value != nil {
-			result, exception, cause = coffLazyResult{}, 87, fmt.Errorf("delayed import hook panic: %v", value)
+			result, exception, cause = coffLazyResult{}, coffDelayInvalidParameter, fmt.Errorf("delayed import hook panic: %v", value)
 		}
 		if exception != 0 {
 			result.address = 0
@@ -153,7 +160,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 			cause = fmt.Errorf("recovery target belongs to a competing delayed module")
 		}
 		if cause != nil {
-			return result, 87, cause
+			return result, coffDelayInvalidParameter, cause
 		}
 	}
 	if recovery.address != 0 {
@@ -161,7 +168,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 	} else {
 		start := p.notify(coffLazyStart, info)
 		if start.owned && start.module == 0 {
-			return result, 87, p.rejectHook(start, "delayed import hook transferred an empty module")
+			return result, coffDelayInvalidParameter, p.rejectHook(start, "delayed import hook transferred an empty module")
 		}
 		if start.module != 0 {
 			result.module, cause = p.adopt(slot.module, start.module, start.owned)
@@ -169,7 +176,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 				cause = fmt.Errorf("hook target belongs to a competing delayed module")
 			}
 			if cause != nil {
-				return result, 87, cause
+				return result, coffDelayInvalidParameter, cause
 			}
 		}
 		result.address = start.address
@@ -181,7 +188,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 		if result.module == 0 {
 			loaded := p.notify(coffLazyBeforeLoad, info)
 			if loaded.address != 0 || loaded.owned && loaded.module == 0 {
-				return result, 87, p.rejectHook(loaded, "invalid before-load hook result")
+				return result, coffDelayInvalidParameter, p.rejectHook(loaded, "invalid before-load hook result")
 			}
 			if loaded.module == 0 {
 				path, err := importDLLPath(slot.module.name, slot.module.origin, p.paths)
@@ -196,22 +203,22 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 					}
 					loaded = p.failure(coffLazyLoadFailure, info)
 					if loaded.address != 0 || loaded.owned && loaded.module == 0 {
-						return result, 87, p.rejectHook(loaded, "invalid load-failure hook result")
+						return result, coffDelayInvalidParameter, p.rejectHook(loaded, "invalid load-failure hook result")
 					}
 					if loaded.module == 0 {
-						return result, 126, info.err
+						return result, coffDelayMissingModule, info.err
 					}
 				}
 			}
 			result.module, cause = p.adopt(slot.module, loaded.module, loaded.owned)
 			if cause != nil {
-				return result, 87, cause
+				return result, coffDelayInvalidParameter, cause
 			}
 		}
 		info.module, info.err = result.module, nil
 		lookup := p.notify(coffLazyBeforeLookup, info)
 		if lookup.module != 0 || lookup.owned {
-			return result, 87, p.rejectHook(lookup, "invalid before-lookup hook result")
+			return result, coffDelayInvalidParameter, p.rejectHook(lookup, "invalid before-lookup hook result")
 		}
 		result.address = lookup.address
 		if result.address == 0 {
@@ -223,11 +230,11 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 				}
 				lookup = p.failure(coffLazyLookupFailure, info)
 				if lookup.module != 0 || lookup.owned {
-					return result, 87, p.rejectHook(lookup, "invalid lookup-failure hook result")
+					return result, coffDelayInvalidParameter, p.rejectHook(lookup, "invalid lookup-failure hook result")
 				}
 				result.address = lookup.address
 				if result.address == 0 {
-					return result, 127, info.err
+					return result, coffDelayMissingProcedure, info.err
 				}
 			}
 		}
