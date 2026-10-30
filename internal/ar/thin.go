@@ -64,6 +64,20 @@ func (s *thinSource) member(offset uint64) (Entry, error) {
 // allocation. Unique external reads and decoded member bytes each have a bound.
 // It does not parse native objects or compile bitcode.
 func Snapshot(ctx context.Context, name string, b []byte, maxSize, maxMembers int, readFile func(string, int64) ([]byte, error)) ([]Entry, error) {
+	return snapshot(ctx, name, b, nil, maxSize, maxMembers, readFile)
+}
+
+// SnapshotSelected validates the whole container but only reads files required
+// by the requested references, in caller order. Unselected missing
+// files and proxies are not opened. Snapshot retains its all-member behavior.
+func SnapshotSelected(ctx context.Context, name string, b []byte, indices []int, maxSize, maxMembers int, readFile func(string, int64) ([]byte, error)) ([]Entry, error) {
+	if len(indices) == 0 {
+		return nil, fmt.Errorf("empty thin archive member selection")
+	}
+	return snapshot(ctx, name, b, indices, maxSize, maxMembers, readFile)
+}
+
+func snapshot(ctx context.Context, name string, b []byte, indices []int, maxSize, maxMembers int, readFile func(string, int64) ([]byte, error)) ([]Entry, error) {
 	if ctx == nil || readFile == nil {
 		return nil, fmt.Errorf("thin archive requires a context and file reader")
 	}
@@ -73,6 +87,12 @@ func Snapshot(ctx context.Context, name string, b []byte, maxSize, maxMembers in
 	entries, err := Decode(b, true, maxSize, maxMembers)
 	if err != nil {
 		return nil, err
+	}
+	if indices != nil {
+		entries, err = Select(entries, indices)
+		if err != nil {
+			return nil, err
+		}
 	}
 	r := thinReader{remaining: int64(maxSize - len(b)), sources: make(map[string]*thinSource), readFile: readFile, maxSize: maxSize, maxMembers: maxMembers}
 	remainingObjects := maxSize

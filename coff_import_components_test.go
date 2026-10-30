@@ -17,6 +17,7 @@ type componentDirectoryShape struct {
 	multi, nullInTable bool
 	crossArchive       bool
 	detachedNull       bool
+	sourceKind         string
 	omit               []bool
 	timestamps         []uint32
 }

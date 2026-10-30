@@ -19,6 +19,25 @@ type Entry struct {
 	DisplayName    string // Thin reference including selected proxy member name.
 }
 
+// Select returns the requested ordinary members in caller order. Indices refer
+// to Decode's entries, excluding symbol indexes and long-name tables. Duplicate
+// member names remain distinct; duplicate indices and empty sets are rejected.
+func Select(entries []Entry, indices []int) ([]Entry, error) {
+	if len(indices) == 0 || len(indices) > len(entries) {
+		return nil, fmt.Errorf("invalid archive member selection size %d", len(indices))
+	}
+	seen := make(map[int]bool, len(indices))
+	selected := make([]Entry, 0, len(indices))
+	for _, index := range indices {
+		if index < 0 || index >= len(entries) || seen[index] {
+			return nil, fmt.Errorf("invalid or duplicate archive member index %d", index)
+		}
+		seen[index] = true
+		selected = append(selected, entries[index])
+	}
+	return selected, nil
+}
+
 // Decode validates GNU/SysV, COFF and BSD headers before external I/O.
 // Entry data borrows b; symbol indexes and name tables are omitted.
 // maxMembers == 0 leaves the member count unlimited within maxSize.

@@ -151,6 +151,9 @@ func testNativeCOFFImportDirectoryMixedComponent(t *testing.T, omit []bool, layo
 				}
 				if component != nil && component.detachedNull {
 					modes = []string{"explicit", "retry"}
+					if component.sourceKind != "" {
+						modes = []string{"selected", "retry"}
+					}
 				}
 				for _, mode := range modes {
 					t.Run(mode, func(t *testing.T) {
@@ -173,9 +176,18 @@ func testNativeCOFFImportDirectoryMixedComponent(t *testing.T, omit []bool, layo
 						}
 						path := filepath.Join(dir, mode+".lib")
 						if component != nil && component.detachedNull {
-							paths := writeComponentObjects(t, t.TempDir(), componentParts)
-							if err := s.LoadCOFFImportDirectory(paths...); err != nil {
-								t.Fatal(err)
+							var paths []string
+							if component.sourceKind != "" {
+								sources, snapshots := importDirectorySources(t, dir, componentParts, component.sourceKind)
+								paths = snapshots
+								if err := s.LoadCOFFImportDirectoryFrom(sources...); err != nil {
+									t.Fatal(err)
+								}
+							} else {
+								paths = writeComponentObjects(t, t.TempDir(), componentParts)
+								if err := s.LoadCOFFImportDirectory(paths...); err != nil {
+									t.Fatal(err)
+								}
 							}
 							for _, path := range paths {
 								if err := os.Remove(path); err != nil {

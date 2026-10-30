@@ -426,6 +426,9 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 		}
 		if component != nil && component.detachedNull {
 			kinds = []string{"explicit", "system_library"}
+			if component.sourceKind != "" {
+				kinds = []string{"selected", "system_library"}
+			}
 		}
 		for _, kind := range kinds {
 			t.Run(opt+"/"+kind, func(t *testing.T) {
@@ -448,12 +451,34 @@ func testNativeCOFFImportDirectoryComponent(t *testing.T, omit []bool, layout di
 					return
 				}
 				if component != nil && component.detachedNull {
-					if err := s.LoadCOFFImportDirectory(paths...); err != nil {
-						t.Fatal(err)
-					}
-					staged := len(s.files)
-					if err := s.LoadCOFFImportDirectory(paths...); err == nil || len(s.files) != staged || len(s.libs) != 0 {
-						t.Fatal("overlapping directory was staged", err)
+					if component.sourceKind != "" {
+						sources, snapshots := importDirectorySources(t, dir, parts, component.sourceKind)
+						if err := s.LoadCOFFImportDirectoryFrom(sources...); err != nil {
+							t.Fatal(err)
+						}
+						staged := len(s.files)
+						if err := s.LoadCOFFImportDirectoryFrom(sources...); err == nil || len(s.files) != staged || len(s.libs) != 0 {
+							t.Fatal("overlapping selected source was staged", err)
+						}
+						for _, path := range snapshots {
+							if err := os.Remove(path); err != nil {
+								t.Fatal(err)
+							}
+						}
+						for _, source := range sources {
+							load(t, s, source.Path)
+						}
+						if err := s.Link("unselected_source_symbol"); err == nil || s.image != nil || len(s.libs) != 0 {
+							t.Fatal("unselected source supplied a root or opened DLLs", err)
+						}
+					} else {
+						if err := s.LoadCOFFImportDirectory(paths...); err != nil {
+							t.Fatal(err)
+						}
+						staged := len(s.files)
+						if err := s.LoadCOFFImportDirectory(paths...); err == nil || len(s.files) != staged || len(s.libs) != 0 {
+							t.Fatal("overlapping directory was staged", err)
+						}
 					}
 					load(t, s, consumer)
 				} else if len(crossPaths) != 0 {
