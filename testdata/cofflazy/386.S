@@ -1,0 +1,39 @@
+.text
+.globl _lazy_entry
+_lazy_entry:
+cmpl $0,0x23456780
+je lazy_slow
+jmp *0x23456780
+lazy_slow:
+pushl %ebp
+movl %esp,%ebp
+andl $-16,%esp
+subl $160,%esp
+movl %eax,4(%esp)
+movl %ecx,8(%esp)
+movl %edx,12(%esp)
+movdqu %xmm0,16(%esp)
+movdqu %xmm1,32(%esp)
+movdqu %xmm2,48(%esp)
+movdqu %xmm3,64(%esp)
+movdqu %xmm4,80(%esp)
+movdqu %xmm5,96(%esp)
+movdqu %xmm6,112(%esp)
+movdqu %xmm7,128(%esp)
+movl $0x34567898,(%esp)
+movl $0x456789a8,%eax
+call *%eax
+movdqu 16(%esp),%xmm0
+movdqu 32(%esp),%xmm1
+movdqu 48(%esp),%xmm2
+movdqu 64(%esp),%xmm3
+movdqu 80(%esp),%xmm4
+movdqu 96(%esp),%xmm5
+movdqu 112(%esp),%xmm6
+movdqu 128(%esp),%xmm7
+movl 4(%esp),%eax
+movl 8(%esp),%ecx
+movl 12(%esp),%edx
+movl %ebp,%esp
+popl %ebp
+jmp *0x23456780
