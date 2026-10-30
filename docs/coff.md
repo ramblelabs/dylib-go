@@ -162,8 +162,8 @@ not register unsupported language exception handlers or missing user frames.
 `DelayImportInfo` preserves DLL/public/export identity, ordinal, current module
 and address, native error code and a Go error. `OwnModule` transfers exactly
 one acquired library reference for an accepted module result. Borrowed modules
-and address-only replacements must remain alive through calls, finalizers and
-unload. Use native calling conventions and retained compiled/C callback entries
+and address-only replacements must remain alive until cleanup or an explicit
+unload resets their entries. Use native calling conventions and retained compiled/C callback entries
 for callable addresses.
 
 Hooks run without provider/session locks, including on C-created native
@@ -173,6 +173,9 @@ a failed duplicate release stays owned for cleanup retry while the canonical
 target remains usable. Same-thread recursion into the same unresolved import
 and hook panics become native invalid-parameter failures. The committed target
 is available to a reentrant end notification.
+Each DLL has one canonical module while cached; a direct target coupled with a
+conflicting module is rejected before that target can be called. Address-only
+replacements can use separately retained code.
 
 An unrecovered load or lookup raises the SDK delay exception with native
 `DelayLoadInfo` after the Go callback returns. Invalid hook results and recursion
@@ -196,6 +199,8 @@ extensions and AArch64 scalable-vector calling conventions are unqualified.
 `Session.UnloadDelayImports` resets lazy cells and releases owned delayed DLL
 references. Later calls resolve again through the same public symbols and IAT
 aliases. Explicitly loaded and borrowed handles keep their original owners.
+Hook-borrowed handles are forgotten so the next call can acquire a new loan;
+explicitly loaded matching DLLs remain available from the session.
 This explicit operation releases owned delayed references even when automatic
 session cleanup uses `KeepLibraries`.
 

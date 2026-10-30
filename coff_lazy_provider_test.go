@@ -318,6 +318,40 @@ func TestCOFFLazyProvidersBorrowedModule(t *testing.T) {
 	}
 }
 
+func TestCOFFLazyProvidersHookBorrowReload(t *testing.T) {
+	var loans, closes int
+	ops := coffLazyOperations{
+		open: func(string) (uintptr, error) { t.Fatal("borrow hook reached loader"); return 0, nil },
+		lookup: func(module uintptr, _ string, _ uint16) (uintptr, error) {
+			if module != uintptr(100+loans) {
+				t.Fatal("stale hook-borrowed handle", module, loans)
+			}
+			return module + 42, nil
+		},
+		close: func(uintptr) error { closes++; return nil },
+	}
+	hooks := coffLazyHooks{notify: func(event coffLazyEvent, _ coffLazyInfo) coffLazyResult {
+		if event == coffLazyBeforeLoad {
+			loans++
+			return coffLazyResult{module: uintptr(100 + loans)}
+		}
+		return coffLazyResult{}
+	}}
+	p, _ := newCOFFLazyProviders(lazyProviderObjects(lazyProviderEntry("provider.dll", "add")), nil, nil, nil, ops, hooks)
+	for round := 1; round <= 2; round++ {
+		result, code, err := p.resolve(0, 1, coffLazyResult{})
+		if code != 0 || err != nil || result.module != uintptr(100+round) || loans != round {
+			t.Fatal("renewed module loan", result, code, err, loans)
+		}
+		if err := p.unload(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if closes != 0 {
+		t.Fatal("borrowed hook references were released", closes)
+	}
+}
+
 func TestCOFFLazyProvidersDetachLoadsProvider(t *testing.T) {
 	var p *coffLazyProviders
 	var closed []uintptr
@@ -450,5 +484,29 @@ func TestCOFFLazyProvidersInvalidHookOwnership(t *testing.T) {
 	}
 	if err := p.unload(); err != nil || closed != 1 {
 		t.Fatal("invalid result lost transferred reference", err, closed)
+	}
+}
+
+func TestCOFFLazyProvidersConflictingTargetModule(t *testing.T) {
+	var closed []uintptr
+	ops := coffLazyOperations{close: func(module uintptr) error { closed = append(closed, module); return nil }}
+	hooks := coffLazyHooks{notify: func(event coffLazyEvent, info coffLazyInfo) coffLazyResult {
+		if event != coffLazyStart {
+			return coffLazyResult{}
+		}
+		if info.name == "first" {
+			return coffLazyResult{module: 100, address: 142, owned: true}
+		}
+		return coffLazyResult{module: 200, address: 242, owned: true}
+	}}
+	p, _ := newCOFFLazyProviders(lazyProviderObjects(lazyProviderEntry("provider.dll", "first"), lazyProviderEntry("provider.dll", "second")), nil, nil, nil, ops, hooks)
+	if result, code, err := p.resolve(0, 1, coffLazyResult{}); code != 0 || err != nil || result.address != 142 {
+		t.Fatal(result, code, err)
+	}
+	if result, code, err := p.resolve(1, 1, coffLazyResult{}); code != 87 || err == nil || result.address != 0 {
+		t.Fatal("target outlived its competing module", result, code, err)
+	}
+	if err := p.unload(); err != nil || !reflect.DeepEqual(closed, []uintptr{200, 100}) {
+		t.Fatal("competing/canonical reference cleanup", err, closed)
 	}
 }

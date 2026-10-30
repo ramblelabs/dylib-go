@@ -34,6 +34,7 @@ type coffLazyProviders struct {
 type coffLazyModule struct {
 	name, origin string
 	handle       uintptr
+	baseline     uintptr // Explicit session-owned handle; hook loans are not baseline.
 	owned        bool
 }
 
@@ -103,7 +104,7 @@ func newCOFFLazyProviders(objects []*object, fixed map[*coffImport]uintptr, path
 			if !exists {
 				module := p.modules[key]
 				if module == nil {
-					module = &coffLazyModule{name: entry.dll, origin: object.directory, handle: borrowed[key]}
+					module = &coffLazyModule{name: entry.dll, origin: object.directory, handle: borrowed[key], baseline: borrowed[key]}
 					p.modules[key] = module
 					p.order = append(p.order, module)
 				}
@@ -341,6 +342,7 @@ func (p *coffLazyProviders) unload() error {
 		if module == nil && len(p.pending) == 0 {
 			p.loaded = nil
 			for _, borrowed := range p.order {
+				borrowed.handle = borrowed.baseline
 				p.resetModule(borrowed, true)
 			}
 			p.mu.Unlock()

@@ -36,7 +36,7 @@ type Options struct {
 	// initialization and owns DLLs like ordinary imports; lazy helpers are bypassed.
 	DelayImports DelayImportMode
 	// DelayHooks supplies Go notifications/failure recovery for raw lazy imports.
-	DelayHooks DelayImportHooks
+	DelayHooks DelayImportHooks `json:"-"`
 	// EmulatedTLS enables Clang -femulated-tls for raw objects and archives.
 	// Values belong to native OS threads, not Go goroutines. Supports constant
 	// values, documented C++ thread-exit registrations and Clang MSVC emulated

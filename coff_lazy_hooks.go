@@ -32,10 +32,12 @@ type DelayImportInfo struct {
 // return Address to bypass lookup, optionally with Module. BeforeLoadLibrary
 // and LoadLibraryFailure accept Module; the two GetProcAddress events accept
 // Address. EndProcessing ignores the result and transfers no ownership.
+// Module participates in the per-DLL canonical cache; a direct-target result
+// must agree with an already selected module for that DLL.
 //
 // OwnModule transfers exactly one acquired library reference to the image.
-// Otherwise the caller must retain Module, and any code used by Address,
-// through session cleanup and explicit unload. Addresses must use the actual
+// Otherwise the caller retains Module and code used by Address until session
+// cleanup or an explicit unload resets that entry. Addresses must use the actual
 // native calling convention; an ordinary Go function address is not sufficient.
 type DelayImportResult struct {
 	Module, Address uintptr
@@ -90,6 +92,8 @@ var ErrDelayImportsBusy = errors.New("dylib: delayed imports are in use")
 // UnloadDelayImports resets raw lazy import caches and releases their owned
 // library references, even with KeepLibraries. Explicitly loaded and borrowed
 // modules stay owned by their original owners. Later calls resolve again.
+// Hook-borrowed handles are forgotten; explicitly loaded matching DLLs remain
+// borrowed from the session and are available for subsequent resolutions.
 //
 // Stop unmanaged native callers and callbacks before invoking this method.
 // Managed calls and leases make it return ErrDelayImportsBusy instead of
