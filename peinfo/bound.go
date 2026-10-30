@@ -5,11 +5,32 @@ import (
 	"fmt"
 )
 
+// InspectBoundDirectory decodes an explicitly bounded IMAGE_BOUND_IMPORT_DESCRIPTOR
+// directory, including its forwarder records and relative-name strings. An empty
+// input represents an absent directory. Offsets are relative to data[0], not a PE
+// image or COFF section. It returns no partial result and retains no input bytes.
+// This reads metadata only; timestamps never authorize using cached addresses.
+func InspectBoundDirectory(data []byte) ([]BoundImport, error) {
+	if len(data) > maxInput {
+		return nil, fmt.Errorf("bound directory exceeds %d bytes", maxInput)
+	}
+	r := &reader{names: maxInput}
+	return r.boundDirectory(data)
+}
+
 func (r *reader) bound() ([]BoundImport, error) {
 	b, _, err := r.directory(11)
-	if err != nil || len(b) == 0 {
+	if err != nil {
 		return nil, err
 	}
+	return r.boundDirectory(b)
+}
+
+func (r *reader) boundDirectory(b []byte) ([]BoundImport, error) {
+	if len(b) == 0 {
+		return nil, nil
+	}
+	var err error
 	type names struct {
 		dll        uint16
 		forwarders []uint16

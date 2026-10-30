@@ -40,15 +40,36 @@ Concurrent inspections share no mutable decoder state.
 
 ## Loading and verification
 
+`peinfo.InspectBoundDirectory(data)` also decodes a standalone bound directory.
+The supplied bytes explicitly include its records, null descriptor and relative
+name strings. Offsets start at `data[0]`; they are neither image RVAs nor COFF
+section offsets. The same decoder and budgets serve PE image inspection.
+
+For a regular COFF or bigobj file,
+`dylib.InspectCOFFBoundImportDirectory(path, root, size)` selects that byte range
+from a unique defined symbol. Names follow the loader's i386 linker-name
+normalization. The directory must fit in file-backed storage in a
+relocation-free section. A nonzero symbol offset is supported. No section name
+or directory extent is inferred, and no archive member is selected implicitly.
+Extract an archive member explicitly before inspecting it.
+
+Both APIs report metadata without loading code or dependencies. Auxiliary bound
+records do not supply missing import names or authorize calling cached addresses.
+The raw loader continues to resolve recognized imports using their complete ILTs.
+Relocated/split auxiliary directories and producer-specific discovery remain
+outside this explicit inspection interface.
+
 Complete PE libraries continue to use the Windows loader and their native delay
 helpers. Metadata inspection does not open DLLs, bind imports, invoke helpers or
-alter IATs. Raw COFF delay execution and auxiliary bound metadata are separate
-loader work; this package inspects explicitly bounded PE image directories.
+alter IATs. Raw lazy delay execution remains separate loader work.
 
 Tests compile MSVC/GNU AMD64/ARM64/i386 PE controls from C and assembler sources.
 LLVM independently checks ordinary/delay lookup identities, directory fields,
 IAT words and unload-pointer base relocations. Bound-directory records and
-forwarders use assembler-produced metadata selected through the PE header.
+forwarders use the same checked-in assembler source for raw COFF inspection and
+the independently linked PE control selected through its header. Tests compare
+both outputs on six MSVC/GNU targets and cover bigobj, explicit nonzero roots,
+renamed sections, immutable results and rejected relocations/ranges.
 Malformed inputs, missing lookup tables, cache identity, snapshots, concurrency,
 record budgets and Go fuzz seeds are also exercised.
 

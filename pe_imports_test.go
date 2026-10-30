@@ -197,6 +197,16 @@ func TestPEImportMetadataTargets(t *testing.T) {
 			t.Run(target+"/"+shape, func(t *testing.T) {
 				f := buildPEImportFixture(t, target, "-O2", shape)
 				got := checkPEImportMetadata(t, f, shape)
+				if shape == "bound" {
+					size := uint64(peFixtureSection(t, f, ".bound").VirtualSize)
+					raw, err := InspectCOFFBoundImportDirectory(f.boundObject, "bound_start", size)
+					if err != nil || !reflect.DeepEqual(raw, got.Bound) {
+						t.Fatal("raw directory differs from independently linked PE metadata", raw, got.Bound, err)
+					}
+					if result, err := InspectCOFFBoundImportDirectory(f.file, "bound_start", size); err == nil || result != nil {
+						t.Fatal("raw COFF inspection accepted a PE image", result, err)
+					}
+				}
 				if shape != "legacy" {
 					checkLLVMPEImports(t, f, got)
 				}

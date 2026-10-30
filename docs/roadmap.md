@@ -66,7 +66,8 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] GNU i386 compatibility aliases in eager delay members, shared ordinary/delay name validation, original mixed-member indices, independent native OS-helper controls and Windows Go 386 execution.
 - [x] Explicit bounded, ordered raw COFF import directories with unconnected terminators, atomic staging, existing validators, retained ordinary/COMDAT lifecycle and native Windows Go/llgo controls.
 - [x] Explicit index-based regular/thin archive metadata selections, ordered raw/archive mixtures, duplicate member names, unparsed unused members, preserved thin/proxy origins, atomic staging and native Windows Go/llgo controls.
-- [ ] Raw COFF auxiliary bound metadata and broader/lazy raw delay-import execution with hooks and unload semantics.
+- [x] Pure Go auxiliary bound-directory inspection with explicit raw COFF/bigobj root symbols and byte ranges, shared PE decoding, six-target independent PE controls and rejected unresolved section relocations.
+- [ ] Additional auxiliary bound producers/layouts and broader/lazy raw delay-import execution with hooks and unload semantics.
 - [x] Mach-O external `N_INDR` forwarding aliases, chains, archive dependencies, and native macOS object/archive calls.
 - [x] Mach-O eager indirect pointer binding, local/absolute markers, and standard amd64/arm64 stubs with native scalar/large-record calls.
 - [x] ELF amd64 SIZE32/SIZE64 and i386 SIZE32, selected weak/strong/common sizes, archive dependencies, and native Linux calls.
