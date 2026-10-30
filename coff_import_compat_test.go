@@ -11,8 +11,12 @@ import (
 
 // GNU i386 --compat-implib emits both the legacy and modern IAT spelling.
 func compatLongImportAssembly(target string, entry longImportFixture) string {
-	legacy, modern := "___imp_"+entry.public, "__imp__"+entry.public
-	return longImportAssembly(target, entry) + ".global " + legacy + "\n.set " + legacy + "," + modern + "\n"
+	return longImportAssembly(target, entry) + compatImportAlias(entry.public)
+}
+
+func compatImportAlias(public string) string {
+	legacy, modern := "___imp_"+public, "__imp__"+public
+	return ".global " + legacy + "\n.set " + legacy + "," + modern + "\n"
 }
 
 func TestCOFFCompatLongImports(t *testing.T) {

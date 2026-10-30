@@ -49,7 +49,7 @@ Standard GNU Binutils import libraries store each IAT slot and optional function
 
 The decoder verifies matching lookup/address entries, known tail-jump code and its relocations. Descriptor helpers remain metadata and are not extracted for a converted import. Ambiguous/missing descriptors, isolated thunk members, malformed entries, and arbitrary custom import layouts retain an explicit unsupported marker. The parser never discards unknown executable behavior merely because a section has an `.idata` name.
 
-GNU i386 `--compat-implib` single-import members can define legacy and modern IAT names, such as `___imp_add` and `__imp__add`. Existing x86 name normalization maps both to `__imp_add`. Both original symbol indices retain the same imported identity and session-owned IAT slot, including references from retained ordinary sections. This exception requires the same normalized name at offset zero in the same validated slot; different names, offsets and sections remain rejected. It does not broaden multi-entry, directory or delay-import templates.
+GNU i386 `--compat-implib` single-import members can define legacy and modern IAT names, such as `___imp_add` and `__imp__add`. Existing x86 name normalization maps both to `__imp_add`. Both original symbol indices retain the same imported identity and session-owned IAT slot, including references from retained ordinary sections. This exception requires the same normalized name at offset zero in the same validated slot; different names, offsets and sections remain rejected. Multi-entry and directory templates retain their existing rules. [Raw delay imports](#raw-delay-imports) reuse this single-slot alias validation under explicit eager policy.
 
 A member can contain multiple contiguous IAT slots for one DLL. The optional ILT must match every slot, and each slot must have one global `__imp_` name. Imports may mix functions, data, const aliases, export names and ordinals. `.idata$7` can contain one shared descriptor reference or one reference per slot; all must identify the same DLL. Each slot is checked through the existing single-import decoder, including exact thunk bytes and unique relocation sites. DLL metadata is validated once per descriptor. The normalized import names have the same aggregate byte budget as an input file.
 
@@ -84,6 +84,10 @@ The Go decoder validates the complete fast/fallback thunk, its absolute initial
 IAT pointer, a unique shared resolver and its 32-byte RVA descriptor in
 `.text$2`, and the DLL name provider. Names and ordinals come from the separate
 lookup table; the initial fallback address never supplies an export identity.
+GNU i386 `--compat-implib` aliases use the same single-slot name validation as
+ordinary imports: both normalized names retain one imported identity and IAT
+slot, with exactly one callable thunk. Mixed members preserve both original
+symbol indices and ordinary references to either public IAT spelling.
 The recognized resolver/cache/descriptor/name helpers must be metadata-only:
 no ordinary exports, constructors, TLS, COMDAT groups or unclaimed data.
 Successful conversion creates private import views, leaving staged snapshots
@@ -101,6 +105,11 @@ delay-specific unloading. Complete OS-loaded DLLs retain their native semantics.
 Tests inspect real GNU Binutils `--output-delaylib` amd64/386 archives and
 Clang-assembled compatible templates for all three architectures, including
 bigobj, split archives, malformed references and missing/ambiguous providers.
+The genuine GNU i386 compatibility fixture additionally has independent PE
+link controls and native Windows Go calls through both original IAT spellings.
+System-loaded controls execute their lazy helper; raw sessions require explicit
+eager binding. Default rejection, same-slot identity, retry, unused members and
+retained/discarded mixed-member lifecycle entries are tested independently.
 Native Windows Go and llgo tests execute scalar/name/ordinal imports, floating
 arguments, struct values/results/pointers and variadic doubles at `-O0`/`-O2`;
 32-bit Windows uses Go. Repeated calls, provider/dependency retry, default
