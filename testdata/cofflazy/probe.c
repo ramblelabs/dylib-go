@@ -17,6 +17,25 @@ static PVOID handler, continue_handler;
 static _Thread_local EXCEPTION_RECORD *recovered_exception;
 static int recovery_mode;
 
+static void trace_recovery(char stage,EXCEPTION_POINTERS *exception,DelayLoadInfo *info) {
+    if(recovery_mode!=3) return;
+    const char prefix[]="native delay recovery ";char line[192];unsigned length=0;
+    for(unsigned i=0;i<sizeof(prefix)-1;++i) line[length++]=prefix[i];
+    line[length++]=stage;
+    uintptr_t values[]={exception->ExceptionRecord->ExceptionCode,
+        exception->ExceptionRecord->ExceptionFlags,
+        (uintptr_t)exception->ExceptionRecord,(uintptr_t)recovered_exception,
+        info ? (uintptr_t)info->hmodCur : 0,info ? (uintptr_t)info->pfnCur : 0,
+        (uintptr_t)recovery_mode,recovery_module};
+    for(unsigned i=0;i<sizeof(values)/sizeof(values[0]);++i) {
+        line[length++]=' ';line[length++]='0';line[length++]='x';
+        for(unsigned j=sizeof(uintptr_t)*2;j>0;--j)
+            line[length++]="0123456789abcdef"[(values[i]>>((j-1)*4))&15];
+    }
+    line[length++]='\n';DWORD written=0;
+    WriteFile(GetStdHandle(STD_ERROR_HANDLE),line,length,&written,0);
+}
+
 typedef struct { int32_t a,b; } Pair;
 typedef struct { int64_t a,b,c,d; } Large;
 typedef struct { double a,b,c,d; } HFA;
@@ -145,6 +164,7 @@ static LONG WINAPI recover(EXCEPTION_POINTERS *exception) {
     if(strcmp(info->szDll,"prototype.dll") ||
        (info->dlp.fImportByName ? (strcmp(info->dlp.szProcName,"entry") && strcmp(info->dlp.szProcName,"scalar")) : info->dlp.dwOrdinal!=65535))
         return EXCEPTION_CONTINUE_SEARCH;
+    trace_recovery('B',exception,info);
     InterlockedIncrement(&native_exceptions);
     if(recovery_mode==1) info->hmodCur=(HMODULE)recovery_module;
     else if(recovery_mode==2) info->pfnCur=(FARPROC)recovery_target;
@@ -153,9 +173,11 @@ static LONG WINAPI recover(EXCEPTION_POINTERS *exception) {
         else info->pfnCur=(FARPROC)recovery_target;
     }
     recovered_exception=exception->ExceptionRecord;
+    trace_recovery('A',exception,info);
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 static LONG WINAPI continue_recovered(EXCEPTION_POINTERS *exception) {
+    trace_recovery('C',exception,0);
     if(exception->ExceptionRecord!=recovered_exception) return EXCEPTION_CONTINUE_SEARCH;
     recovered_exception=0;
     return EXCEPTION_CONTINUE_EXECUTION;

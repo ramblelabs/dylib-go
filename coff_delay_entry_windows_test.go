@@ -345,11 +345,22 @@ func TestNativeCOFFLazyEntryBoundary(t *testing.T) {
 	if selected != "-O0" && selected != "-O2" {
 		t.Fatal("invalid native boundary optimization", selected)
 	}
+	runCOFFLazyEntryBoundary(t, selected)
+}
+
+// Also qualify the host's existing runtime and prior native-library state.
+// Isolated exception diagnostics must not replace calls in that same process.
+func TestNativeCOFFLazyEntryBoundaryInProcess(t *testing.T) {
+	needNative(t)
+	runCOFFLazyEntryBoundary(t, "")
+}
+
+func runCOFFLazyEntryBoundary(t *testing.T, selected string) {
 	if native.COFFDelayHelper() == 0 {
 		t.Fatal("native Windows delay boundary unavailable")
 	}
 	for _, opt := range []string{"-O0", "-O2"} {
-		if opt != selected {
+		if selected != "" && opt != selected {
 			continue
 		}
 		t.Run(opt, func(t *testing.T) {
