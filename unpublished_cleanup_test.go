@@ -3,6 +3,7 @@ package dylib
 import (
 	"errors"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -145,4 +146,38 @@ func TestNativeUnpublishedCleanupAllowsLinkRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectArrayEvents(t, read, true)
+}
+
+func TestNativeUnpublishedCleanupMemoryRetry(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("POSIX mapper validates the original complete slice")
+	}
+	s, _, im, read := unpublishedCleanupFixture(t)
+	mem := im.mem
+	defer func() {
+		if im.mem != nil {
+			im.mem = mem
+		}
+	}()
+	_, cause := im.lookup("absent_root")
+	if cause == nil {
+		t.Fatal("expected a missing root")
+	}
+	// As in the published-image retry test, the mapper rejects an incomplete
+	// slice without calling munmap. The native image stays intact for retry.
+	im.mem = mem[:len(mem)-1]
+	s.mu.Lock()
+	err := s.discardUnpublishedImage(im, cause)
+	s.mu.Unlock()
+	if !errors.Is(err, cause) || err == cause || s.failedImage != im || s.image != nil || im.mem == nil {
+		t.Fatal("unpublished memory release lost its owner or error", err)
+	}
+	if err := s.Close(); err == nil || s.failedImage != im || len(s.libs) != 1 || len(s.symbolDependencies) != 1 {
+		t.Fatal("failed memory retry released image dependencies", err)
+	}
+	im.mem = mem
+	if err := s.Close(); err != nil || im.mem != nil || s.failedImage != nil || len(s.libs) != 0 || len(s.symbolDependencies) != 0 {
+		t.Fatal("unpublished memory retry did not finish", err)
+	}
+	expectEvents(t, read)
 }
