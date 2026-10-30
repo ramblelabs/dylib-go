@@ -65,6 +65,7 @@ func lazyProbeDispatch(address uintptr) uintptr {
 	}
 	probe.mu.Lock()
 	probe.calls++
+	callNumber := probe.calls
 	probe.threads[request.Thread] = true
 	if request.Thread == 0 || request.Slot != 0 {
 		probe.problem = fmt.Errorf("invalid native request identity: %+v", request)
@@ -118,6 +119,10 @@ func lazyProbeDispatch(address uintptr) uintptr {
 		}
 	} else if failure != 0 {
 		target = 0
+	}
+	if probe.failure == 126 && probe.name == "entry" {
+		fmt.Fprintf(os.Stderr, "native delay Go callback %d: request=%#x recovering=%v module=%#x address=%#x exception=%d -> target=%#x module=%#x failure=%d\n",
+			callNumber, address, request.Recovering, request.Module, request.Address, request.Exception, target, module, failure)
 	}
 	native.SetCOFFDelayResult(address, target, module, failure, failure)
 	return target
