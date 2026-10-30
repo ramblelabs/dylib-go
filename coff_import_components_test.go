@@ -16,6 +16,7 @@ type componentDirectoryShape struct {
 	namespace          string
 	multi, nullInTable bool
 	crossArchive       bool
+	detachedNull       bool
 	omit               []bool
 	timestamps         []uint32
 }
@@ -37,7 +38,7 @@ func (shape componentDirectoryShape) layout() directoryLayout {
 func componentImportParts(t *testing.T, target string, shape componentDirectoryShape, extra string, reverse bool) ([][]byte, []*object) {
 	t.Helper()
 	assembly := importDirectoryAssemblyOptions(target, directoryGroups(), []int{1, 0}, shape.omit, shape.layout())
-	var parts [5]strings.Builder
+	var parts [7]strings.Builder
 	prefix := ""
 	if strings.HasPrefix(target, "i686") {
 		prefix = ".def @feat.00; .scl 3; .type 0; .endef\n.set @feat.00,1\n"
@@ -52,10 +53,16 @@ func componentImportParts(t *testing.T, target string, shape componentDirectoryS
 			switch name[len(name)-1] {
 			case '2':
 				bucket = 0
+				if shape.detachedNull && group == 1 {
+					bucket = 6
+				}
 			case '3':
 				bucket = 0
 				if shape.nullInTable {
 					bucket = 3
+				}
+				if shape.detachedNull {
+					bucket = 5
 				}
 			case '4':
 				bucket = 1

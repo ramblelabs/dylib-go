@@ -294,6 +294,35 @@ multi-object inputs. Windows Go/llgo tests execute raw sets, archives and native
 DLL controls, including partial staging/source deletion, unused missing-DLL
 components and ordinary/COMDAT provider lifecycle plus dependency retry.
 
+### Explicitly bounded object sets
+
+`Session.LoadCOFFImportDirectory(paths...)` stages a complete ordinary import
+directory from an explicit, ordered list of raw COFF objects. It supports
+unconnected metadata, including a separate `.idata$3` terminator that has no
+relocation connecting it to the descriptor owner. `Load` retains its existing
+reference-based composition rules.
+
+Every supplied object belongs to this set. Descriptor contributions follow path
+order; `.idata$3` follows `.idata$2` as in a native COFF link. The same bounded
+directory, exact-thunk, relocation and mixed-section validators apply. Ordinary
+sections, COMDAT associations, lifecycle entries, original symbol indices and
+each IAT owner's DLL-search directory are preserved. The complete set must
+validate before any object is staged; failure opens no DLL and leaves the
+session unchanged. Later `Link` still resolves ordinary dependencies, supports
+retry and retains snapshots after source files are deleted.
+
+Inputs must be distinct, previously unloaded raw COFF object paths with at most
+256 MiB combined bytes. Archives and shared libraries are rejected. This API
+does not infer an archive's selection/order, attach unrelated staged metadata,
+or provide auxiliary bound directories or lazy delay binding. A set is staged
+eagerly as objects; it is not an archive extraction policy.
+
+Tests cover MSVC/GNU AMD64/ARM64/i386, reversed input order, ordinary/bigobj
+records, bound caches and immutable failure. Independent LLD/PE controls verify
+native table order. Windows Go/llgo execute named/data/ordinal calls and mixed
+ordinary/COMDAT lifecycle selection, dependency retry and deleted snapshots at
+`-O0`/`-O2`.
+
 ## Weak externals
 
 A COFF weak external has an auxiliary record naming its fallback symbol and archive search policy. It is not just an undefined ELF weak symbol. The supported policies follow the [Microsoft PE/COFF specification](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#auxiliary-format-3-weak-externals):

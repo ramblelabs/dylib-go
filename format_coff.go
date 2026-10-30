@@ -9,6 +9,12 @@ import (
 )
 
 func parseCOFF(name string, b []byte) (*file, error) {
+	return parseCOFFWithImports(name, b, true)
+}
+
+// Explicit bounded directories must validate the complete original tables,
+// including any independently recognizable members, before normalizing imports.
+func parseCOFFWithImports(name string, b []byte, normalizeImports bool) (*file, error) {
 	f, err := readCOFF(b)
 	if err != nil {
 		return nil, err
@@ -215,8 +221,10 @@ func parseCOFF(name string, b []byte) (*file, error) {
 			o.relocs = append(o.relocs, relocation{section: i + 1, offset: uint64(r.VirtualAddress), typ: uint32(r.Type), symbol: int(r.SymbolTableIndex), pair: -1})
 		}
 	}
-	if imported, ok := newCOFFImportGraph([]*object{o}).convert(o); ok {
-		o = imported
+	if normalizeImports {
+		if imported, ok := newCOFFImportGraph([]*object{o}).convert(o); ok {
+			o = imported
+		}
 	}
 	return finish(o), nil
 }
