@@ -222,7 +222,7 @@ frees the mapping. A failed cleanup retains the remaining ownership for retry.
 Native tests cover object/archive/cross-archive calls, actual GNU amd64/i386
 archives and i386 compatibility archives, mixed scalar/record/pointer/variadic
 consumers, cache/reset/reload, Go failure hooks, native SDK recovery ownership,
-retirement-time first resolution, retained libraries and eight concurrent
+retirement-time first resolution, real DLL-detach reentry, retained libraries and eight concurrent
 C-created first callers with managed allocation/GC at `-O0`/`-O2`.
 The testing CLI accepts `call -eager-delay-imports` or
 `call -lazy-delay-imports`; the two flags are mutually exclusive.

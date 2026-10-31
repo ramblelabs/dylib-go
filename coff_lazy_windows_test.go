@@ -642,3 +642,78 @@ func TestNativeCOFFLazyCleanupRetry(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeCOFFLazyProviderDetach(t *testing.T) {
+	needNative(t)
+	target := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH] + "-pc-windows-msvc"
+	for _, opt := range []string{"-O0", "-O2"} {
+		for _, operation := range []string{"close", "unload"} {
+			t.Run(opt+"/"+operation, func(t *testing.T) {
+				dir := t.TempDir()
+				provider := compile(t, "testdata/cofflazy/detach.c", filepath.Join(dir, "provider.obj"), "--target="+target, opt)
+				entry := "DllMain"
+				if runtime.GOARCH == "386" {
+					entry += "@12"
+				}
+				command(t, "lld-link", "/dll", "/nodefaultlib", "/entry:"+entry, "/export:add", "/export:second", "/out:"+filepath.Join(dir, "probe.dll"), provider)
+				source := filepath.Join(dir, "consumer.c")
+				if err := os.WriteFile(source, []byte("__declspec(dllimport) int add(int,int),second(int,int);\nint cached(int a,int b){return add(a,b);}\nint entry(int a,int b){return second(a,b);}\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				consumer := compile(t, source, filepath.Join(dir, "consumer.obj"), "--target="+target, opt)
+				parts, _ := delayFixtureParts(t, target, []delayFixtureEntry{{"add", "add", 0}, {"second", "second", 0}})
+				storage, err := native.Alloc(4)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer native.Free(storage)
+				var starts atomic.Int32
+				hooks := DelayImportHooks{Notify: func(event DelayImportEvent, _ DelayImportInfo) DelayImportResult {
+					if event == DelayImportStartProcessing {
+						starts.Add(1)
+					}
+					return DelayImportResult{}
+				}}
+				s := New(Options{DelayImports: DelayImportsLazy, LibraryPaths: []string{dir}, DelayHooks: hooks})
+				defer s.Close()
+				load(t, s, consumer)
+				load(t, s, writeComponentObjects(t, t.TempDir(), parts)...)
+				if err := s.Link("cached", "entry"); err != nil {
+					t.Fatal(err)
+				}
+				call(t, s, "cached", 20, 22, 42)
+				address, err := s.Lookup("entry")
+				if err != nil {
+					t.Fatal(err)
+				}
+				lazy := s.image.lazy
+				module := lazy.providers.slots[0].module.handle
+				for name, value := range map[string]uintptr{"detach_entry": address, "detach_observed": uintptr(unsafe.Pointer(&storage[0]))} {
+					global := native.Lookup(module, name)
+					if global == 0 {
+						t.Fatal("missing native detach configuration", name)
+					}
+					*nativeWord(global) = value
+				}
+				if operation == "close" {
+					err = s.Close()
+				} else {
+					err = s.UnloadDelayImports()
+				}
+				if err != nil || le.Uint32(storage) != 42 || starts.Load() != 2 {
+					t.Fatal("first lazy resolution from actual DLL detach", operation, err, le.Uint32(storage), starts.Load())
+				}
+				if operation == "unload" {
+					// The DLL's static detach configuration is fresh after reload.
+					call(t, s, "entry", 20, 22, 42)
+					if starts.Load() != 3 {
+						t.Fatal("detach resolution republished a stale native cell", starts.Load())
+					}
+				}
+				if err := s.Close(); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
