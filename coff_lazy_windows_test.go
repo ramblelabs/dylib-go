@@ -590,3 +590,55 @@ func TestNativeCOFFLazyInitializer(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeCOFFLazyCleanupRetry(t *testing.T) {
+	needNative(t)
+	target := map[string]string{"amd64": "x86_64", "arm64": "aarch64", "386": "i686"}[runtime.GOARCH] + "-pc-windows-msvc"
+	for _, opt := range []string{"-O0", "-O2"} {
+		t.Run(opt, func(t *testing.T) {
+			dir, _ := delayProvider(t, target, opt)
+			parts, _ := delayFixtureParts(t, target, []delayFixtureEntry{{"add", "add", 0}})
+			s := New(Options{DelayImports: DelayImportsLazy, LibraryPaths: []string{dir}})
+			defer s.Close()
+			load(t, s, writeComponentObjects(t, t.TempDir(), parts)...)
+			call(t, s, "add", 20, 22, 42)
+			address, err := s.Lookup("add")
+			if err != nil {
+				t.Fatal(err)
+			}
+			im := s.image
+			lazy := im.lazy
+			id := lazy.id
+			closeProvider := lazy.providers.ops.close
+			defer func() { lazy.providers.ops.close = closeProvider }()
+			failure := errors.New("delayed provider release failed")
+			lazy.providers.ops.close = func(uintptr) error { return failure }
+			if err := s.Close(); !errors.Is(err, failure) || im.mem == nil || lazy.id != id {
+				t.Fatal("failed provider cleanup lost the native image", err)
+			}
+			coffLazyRegistry.Lock()
+			retained := coffLazyRegistry.images[id] == lazy
+			coffLazyRegistry.Unlock()
+			if !retained || runtime.GOARCH != "386" && !lazy.functions.registered {
+				t.Fatal("failed cleanup released callback identity or unwind tables")
+			}
+			// The failed release retained the actual DLL and restored its cell.
+			// All ordinary session APIs remain retired; inspect that retained
+			// native call path directly before retrying its owner's cleanup.
+			value, err := examplecall.Int32(address, 20, 22)
+			if err != nil || value != 42 {
+				t.Fatal("failed cleanup invalidated retained native code", value, err)
+			}
+			lazy.providers.ops.close = closeProvider
+			if err := s.Close(); err != nil || im.mem != nil || lazy.id != 0 {
+				t.Fatal("provider cleanup retry did not finish", err)
+			}
+			coffLazyRegistry.Lock()
+			retained = coffLazyRegistry.images[id] != nil
+			coffLazyRegistry.Unlock()
+			if retained || lazy.functions != nil && (lazy.functions.registered || lazy.functions.mem != nil) {
+				t.Fatal("completed cleanup retained resolver resources")
+			}
+		})
+	}
+}
