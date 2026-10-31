@@ -35,7 +35,7 @@ For PE images, `Inspect` includes ordinary, bound and delay import directories i
 | --- | --- | --- |
 | `DelayImportsDisabled` (default) | Selected delay imports are rejected at link time | Unused archive members remain inert |
 | `DelayImportsEager` | Before native initialization | Ordinary session ownership and cleanup |
-| `DelayImportsLazy` | On the first native call | Go `DelayHooks` and selected SDK C hook variables, owned caches, and quiescent `UnloadDelayImports` |
+| `DelayImportsLazy` | On the first native call | Go `DelayHooks` and selected SDK C hook variables (including weak aliases), owned caches, and quiescent `UnloadDelayImports` |
 
 ## Installation
 

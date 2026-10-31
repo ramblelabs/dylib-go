@@ -7,6 +7,10 @@
 #include <delayimp.h>
 #undef __pfnDliNotifyHook2
 #undef __pfnDliFailureHook2
+#ifdef HOOK_ALIAS_STORAGE
+#define __pfnDliNotifyHook2 hook_notify_storage
+#define __pfnDliFailureHook2 hook_failure_storage
+#endif
 #ifndef HOOK_STORAGE
 #define HOOK_STORAGE
 #endif

@@ -70,7 +70,8 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Internal Go-generated Windows delayed-call entries with independent assembler/unwind controls, SDK-backed native error transport, public callbacks, typed native/thread tests, virtual unwinding and native failure subprocesses.
 - [x] Image-owned raw COFF lazy resolution, canonical native entries, Go notification/failure hooks, SDK module/procedure recovery ownership, explicit quiescent unload, failed cleanup retention and retirement-time first resolution.
 - [x] Selected image-owned SDK delay-hook pointer variables: mutable/const/common storage, CRT installation, Go priority, normal-returning native notification/failure calls, transient Start bypass, End cache visibility and native Go/llgo reentry.
-- [ ] Additional auxiliary bound producers/layouts, native delay-hook nonlocal control flow/original table contracts, weak/imported hook variables and unqualified raw delay producer templates.
+- [x] Selected COFF weak delay-hook aliases through the existing weak resolver, including chains, strong precedence, common/const/CRT storage, all search modes, selected/unused archives and native Windows Go/llgo execution.
+- [ ] Additional auxiliary bound producers/layouts, native delay-hook nonlocal control flow/original table contracts, imported hook variables and unqualified raw delay producer templates.
 - [x] Mach-O external `N_INDR` forwarding aliases, chains, archive dependencies, and native macOS object/archive calls.
 - [x] Mach-O eager indirect pointer binding, local/absolute markers, and standard amd64/arm64 stubs with native scalar/large-record calls.
 - [x] ELF amd64 SIZE32/SIZE64 and i386 SIZE32, selected weak/strong/common sizes, archive dependencies, and native Linux calls.

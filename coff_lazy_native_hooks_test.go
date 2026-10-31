@@ -62,6 +62,8 @@ func TestCOFFNativeDelayHookStorage(t *testing.T) {
 					im.common[name] = commonAllocation{offset: 128, size: width - 1}
 				case "weak_alias":
 					delete(im.defs, name)
+					o.symbols[0].section = 0
+					o.symbols[0].alias = &weakAlias{target: 0, search: 3}
 					im.aliases = map[string]definition{name: {o, 0}}
 				}
 				hooks, err := im.coffNativeDelayHooks()
