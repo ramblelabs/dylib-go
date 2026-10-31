@@ -113,6 +113,25 @@ EXPORT int32_t probe(int32_t kind,int32_t seed) {
     }
     return -2;
 }
+#if defined(__aarch64__)
+EXPORT int32_t check_nonvolatile_fp(int32_t seed,int32_t unused) {
+    (void)unused;
+    register double a __asm__("d8")=8.25,b __asm__("d9")=9.25;
+    register double c __asm__("d10")=10.25,d __asm__("d11")=11.25;
+    register double e __asm__("d12")=12.25,f __asm__("d13")=13.25;
+    register double g __asm__("d14")=14.25,h __asm__("d15")=15.25;
+    // Keep real nonvolatile FP registers live across the first and cached
+    // calls, including the native helper and its allocating Go callback.
+    __asm__ volatile("" : "+w"(a),"+w"(b),"+w"(c),"+w"(d),"+w"(e),"+w"(f),"+w"(g),"+w"(h));
+    int32_t result=probe(0,seed);
+    // Output-only operands read the physical registers without restoring the
+    // earlier C variables first, including when compiled without optimization.
+    __asm__ volatile("" : "=w"(a),"=w"(b),"=w"(c),"=w"(d),"=w"(e),"=w"(f),"=w"(g),"=w"(h));
+    if(a!=8.25 || b!=9.25 || c!=10.25 || d!=11.25 ||
+       e!=12.25 || f!=13.25 || g!=14.25 || h!=15.25) return -1;
+    return result;
+}
+#endif
 static DWORD WINAPI worker(void *argument) {
     int32_t seed=(int32_t)(uintptr_t)argument;
     for(int i=0;i<100;++i) if(probe(0,seed)!=42) return 1;

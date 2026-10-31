@@ -24,6 +24,25 @@ typedef struct dylib_coff_delay_request {
 } dylib_coff_delay_request;
 typedef uintptr_t (WINAPI *dylib_coff_delay_dispatch)(uintptr_t);
 
+#if defined(__aarch64__)
+// Go's Windows ARM64 syscall callback entry does not preserve d8-d15.
+// Declare them clobbered so the C compiler saves/restores the ABI-required
+// low 64 bits and emits matching Windows unwind information. Keep the asm
+// after the call to prevent a tail call, and the wrapper out of line.
+__attribute__((noinline))
+static uintptr_t dylib_coff_delay_dispatch_go(
+        dylib_coff_delay_dispatch dispatch, uintptr_t request) {
+    uintptr_t result = dispatch(request);
+    __asm__ volatile("" ::: "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15");
+    return result;
+}
+#else
+static inline uintptr_t dylib_coff_delay_dispatch_go(
+        dylib_coff_delay_dispatch dispatch, uintptr_t request) {
+    return dispatch(request);
+}
+#endif
+
 static uintptr_t __cdecl dylib_coff_delay_resolve(dylib_coff_delay_entry *entry) {
     dylib_coff_delay_request request = {0};
     request.owner = entry->owner;
@@ -37,7 +56,7 @@ static uintptr_t __cdecl dylib_coff_delay_resolve(dylib_coff_delay_entry *entry)
     if (entry->ordinal) request.info.dlp.dwOrdinal = entry->ordinal;
     else request.info.dlp.szProcName = entry->name;
     dylib_coff_delay_dispatch dispatch = (dylib_coff_delay_dispatch)entry->callback;
-    uintptr_t target = dispatch((uintptr_t)&request);
+    uintptr_t target = dylib_coff_delay_dispatch_go(dispatch, (uintptr_t)&request);
     // Only native frames exist above the callback now. A handler can recover
     // a missing module, then separately recover a missing procedure.
     for (unsigned attempt = 0; !target && attempt < 2 &&
@@ -47,7 +66,7 @@ static uintptr_t __cdecl dylib_coff_delay_resolve(dylib_coff_delay_entry *entry)
         RaiseException(VcppException(ERROR_SEVERITY_ERROR, error), 0, 1, parameters);
         request.recovering = 1;
         request.exception = 0;
-        target = dispatch((uintptr_t)&request);
+        target = dylib_coff_delay_dispatch_go(dispatch, (uintptr_t)&request);
     }
     if (!target) {
         DWORD error = request.exception ? request.exception : ERROR_INVALID_PARAMETER;

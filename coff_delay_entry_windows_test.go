@@ -65,7 +65,6 @@ func lazyProbeDispatch(address uintptr) uintptr {
 	}
 	probe.mu.Lock()
 	probe.calls++
-	callNumber := probe.calls
 	probe.threads[request.Thread] = true
 	if request.Thread == 0 || request.Slot != 0 {
 		probe.problem = fmt.Errorf("invalid native request identity: %+v", request)
@@ -119,10 +118,6 @@ func lazyProbeDispatch(address uintptr) uintptr {
 		}
 	} else if failure != 0 {
 		target = 0
-	}
-	if probe.failure == 126 && probe.name == "entry" {
-		fmt.Fprintf(os.Stderr, "native delay Go callback %d: request=%#x recovering=%v module=%#x address=%#x exception=%d -> target=%#x module=%#x failure=%d\n",
-			callNumber, address, request.Recovering, request.Module, request.Address, request.Exception, target, module, failure)
 	}
 	native.SetCOFFDelayResult(address, target, module, failure, failure)
 	return target
@@ -400,6 +395,17 @@ func runCOFFLazyEntryBoundary(t *testing.T, selected string) {
 					call(t, s, "check_unwind", 0, 0, 42)
 					if calls, _, problem := probe.snapshot(); calls != 0 || problem != nil {
 						t.Fatal("unwind inspection invoked the resolver", calls, problem)
+					}
+				})
+			}
+			if runtime.GOARCH == "arm64" {
+				t.Run("nonvolatile_fp", func(t *testing.T) {
+					probe := &lazyEntryProbe{target: targets[0], module: s.libs[0], name: "entry", threads: make(map[uintptr]bool)}
+					newLazyProbeEntry(t, s, probe)
+					call(t, s, "check_nonvolatile_fp", 20, 0, 42)
+					call(t, s, "check_nonvolatile_fp", 20, 0, 42)
+					if calls, _, problem := probe.snapshot(); calls != 1 || problem != nil {
+						t.Fatal("FP register preservation or cached entry", calls, problem)
 					}
 				})
 			}
