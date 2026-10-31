@@ -68,11 +68,13 @@ type coffLazyInfo struct {
 	ordinal           uint16
 	module, address   uintptr
 	err               error
+	transient         bool // Native Start bypasses the helper without caching.
 }
 
 type coffLazyResult struct {
 	module, address uintptr
 	owned           bool // A hook transfers one acquired native library reference.
+	transient       bool
 }
 
 type coffLazyHooks struct {
@@ -123,6 +125,12 @@ var errCOFFLazyRecursion = errors.New("recursive resolution of the same delayed 
 // resolve runs only while the owning native image is retained. Recovery inputs
 // are copied from the native helper's stack-owned DelayLoadInfo after SEH returns.
 func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazyResult) (result coffLazyResult, exception uint32, cause error) {
+	return p.resolveWithHooks(index, thread, recovery, p.hooks)
+}
+
+// Hooks are scoped to this native request, so SDK stack storage never becomes
+// part of the shared owner or another concurrent/recursive resolution.
+func (p *coffLazyProviders) resolveWithHooks(index int, thread uintptr, recovery coffLazyResult, hooks coffLazyHooks) (result coffLazyResult, exception uint32, cause error) {
 	if index < 0 || index >= len(p.slots) || thread == 0 {
 		return result, coffDelayInvalidParameter, fmt.Errorf("invalid delayed import request")
 	}
@@ -167,7 +175,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 	if recovery.address != 0 {
 		result.address = recovery.address
 	} else {
-		start := p.notify(coffLazyStart, info)
+		start := hooks.notifyEvent(coffLazyStart, info)
 		if start.owned && start.module == 0 {
 			return result, coffDelayInvalidParameter, p.rejectHook(start, "delayed import hook transferred an empty module")
 		}
@@ -181,13 +189,14 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 			}
 		}
 		result.address = start.address
+		result.transient = start.transient
 	}
 	if result.address == 0 {
 		p.mu.Lock()
 		result.module = slot.module.handle
 		p.mu.Unlock()
 		if result.module == 0 {
-			loaded := p.notify(coffLazyBeforeLoad, info)
+			loaded := hooks.notifyEvent(coffLazyBeforeLoad, info)
 			if loaded.address != 0 || loaded.owned && loaded.module == 0 {
 				return result, coffDelayInvalidParameter, p.rejectHook(loaded, "invalid before-load hook result")
 			}
@@ -202,7 +211,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 					if info.err == nil {
 						info.err = fmt.Errorf("native loader returned an empty module")
 					}
-					loaded = p.failure(coffLazyLoadFailure, info)
+					loaded = hooks.failureEvent(coffLazyLoadFailure, info)
 					if loaded.address != 0 || loaded.owned && loaded.module == 0 {
 						return result, coffDelayInvalidParameter, p.rejectHook(loaded, "invalid load-failure hook result")
 					}
@@ -217,7 +226,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 			}
 		}
 		info.module, info.err = result.module, nil
-		lookup := p.notify(coffLazyBeforeLookup, info)
+		lookup := hooks.notifyEvent(coffLazyBeforeLookup, info)
 		if lookup.module != 0 || lookup.owned {
 			return result, coffDelayInvalidParameter, p.rejectHook(lookup, "invalid before-lookup hook result")
 		}
@@ -229,7 +238,7 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 				if info.err == nil {
 					info.err = fmt.Errorf("DLL %s does not export name=%q ordinal=%d", info.dll, info.name, info.ordinal)
 				}
-				lookup = p.failure(coffLazyLookupFailure, info)
+				lookup = hooks.failureEvent(coffLazyLookupFailure, info)
 				if lookup.module != 0 || lookup.owned {
 					return result, coffDelayInvalidParameter, p.rejectHook(lookup, "invalid lookup-failure hook result")
 				}
@@ -241,29 +250,33 @@ func (p *coffLazyProviders) resolve(index int, thread uintptr, recovery coffLazy
 		}
 	}
 	p.mu.Lock()
-	if slot.address == 0 {
-		slot.address = result.address
+	if !result.transient {
+		if slot.address == 0 {
+			slot.address = result.address
+		}
+		result.address = slot.address
 	}
-	result.address, result.module = slot.address, slot.module.handle
+	result.module = slot.module.handle
 	p.mu.Unlock()
 	// Publish the logical winner before End: its hook may reenter this slot.
 	info.module, info.address, info.err = result.module, result.address, nil
-	p.notify(coffLazyEnd, info)
+	info.transient = result.transient
+	hooks.notifyEvent(coffLazyEnd, info)
 	return result, 0, nil
 }
 
-func (p *coffLazyProviders) notify(event coffLazyEvent, info coffLazyInfo) coffLazyResult {
-	if p.hooks.notify == nil {
+func (hooks coffLazyHooks) notifyEvent(event coffLazyEvent, info coffLazyInfo) coffLazyResult {
+	if hooks.notify == nil {
 		return coffLazyResult{}
 	}
-	return p.hooks.notify(event, info)
+	return hooks.notify(event, info)
 }
 
-func (p *coffLazyProviders) failure(event coffLazyEvent, info coffLazyInfo) coffLazyResult {
-	if p.hooks.failure == nil {
+func (hooks coffLazyHooks) failureEvent(event coffLazyEvent, info coffLazyInfo) coffLazyResult {
+	if hooks.failure == nil {
 		return coffLazyResult{}
 	}
-	return p.hooks.failure(event, info)
+	return hooks.failure(event, info)
 }
 
 func (p *coffLazyProviders) adopt(module *coffLazyModule, handle uintptr, owned bool) (uintptr, error) {

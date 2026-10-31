@@ -18,7 +18,7 @@ typedef struct {
 } dylib_coff_delay_entry;
 typedef struct dylib_coff_delay_request {
     uintptr_t owner, slot, thread, before_module;
-    unsigned recovering;
+    unsigned recovering, transient;
     DWORD exception;
     DelayLoadInfo info;
 } dylib_coff_delay_request;
@@ -78,6 +78,7 @@ static uintptr_t __cdecl dylib_coff_delay_resolve(dylib_coff_delay_entry *entry)
         TerminateProcess(GetCurrentProcess(), code);
         for (;;) {}
     }
+    if (request.transient) return target;
     void *previous = InterlockedCompareExchangePointer(
         (void *volatile *)entry->cell, (void *)target, NULL);
     return previous ? (uintptr_t)previous : target;
@@ -87,6 +88,24 @@ static uintptr_t dylib_coff_delay_helper(void) {
 }
 static size_t dylib_coff_delay_entry_size(void) {
     return sizeof(dylib_coff_delay_entry);
+}
+// Keep the SDK's calling convention, argument type and notification values.
+_Static_assert(dliStartProcessing == 0 && dliNotePreLoadLibrary == 1 &&
+    dliNotePreGetProcAddress == 2 && dliFailLoadLib == 3 &&
+    dliFailGetProc == 4 && dliNoteEndProcessing == 5, "delay hook event ABI");
+static uintptr_t dylib_coff_delay_hook(uintptr_t address, uintptr_t variable,
+        unsigned event, uintptr_t module, uintptr_t target, DWORD error, unsigned transient) {
+    dylib_coff_delay_request *request = (dylib_coff_delay_request *)address;
+    PfnDliHook hook = *(PfnDliHook volatile *)variable;
+    if (!hook) return 0;
+    request->info.hmodCur = (HMODULE)module;
+    request->info.pfnCur = (FARPROC)target;
+    request->info.dwLastError = error;
+    if (event == dliNoteEndProcessing && target && !transient) {
+        InterlockedCompareExchangePointer((void *volatile *)request->info.ppfn,
+            (void *)target, NULL);
+    }
+    return (uintptr_t)hook(event, &request->info);
 }
 static void dylib_coff_delay_configure(uintptr_t address, uintptr_t callback,
         uintptr_t owner, uintptr_t slot, uintptr_t descriptor, uintptr_t cell,
@@ -147,4 +166,23 @@ func SetCOFFDelayResult(address, target, module uintptr, exception, nativeError 
 	request.info.dwLastError = C.DWORD(nativeError)
 	request.exception = C.DWORD(exception)
 	return true
+}
+
+func SetCOFFDelayTransient(address uintptr, transient bool) {
+	pointer := *(*unsafe.Pointer)(unsafe.Pointer(&address))
+	request := (*C.struct_dylib_coff_delay_request)(pointer)
+	request.transient = 0
+	if transient {
+		request.transient = 1
+	}
+}
+
+// CallCOFFDelayHook borrows live native stack storage for one normal-returning
+// SDK hook call. The pointer variable and its target stay owned by the image.
+func CallCOFFDelayHook(address, variable uintptr, event uint32, module, target uintptr, nativeError uint32, transient bool) uintptr {
+	var bypass C.uint
+	if transient {
+		bypass = 1
+	}
+	return uintptr(C.dylib_coff_delay_hook(C.uintptr_t(address), C.uintptr_t(variable), C.uint(event), C.uintptr_t(module), C.uintptr_t(target), C.DWORD(nativeError), bypass))
 }

@@ -223,11 +223,11 @@ EXPORT int32_t check_unwind(int32_t unused,int32_t ignored) {
     *(uintptr_t *)factory_cell=returned;
 #if defined(__x86_64__)
     uintptr_t *initial=&stack[65];initial[0]=returned;initial[-1]=previous;
-    const unsigned offsets[]={0,1,8,16,139,250,257,258};
+    const unsigned offsets[]={0,1,8,16,139,248,255,256};
     for(unsigned i=0;i<sizeof(offsets)/sizeof(offsets[0]);++i) {
         CONTEXT context={0};context.ContextFlags=CONTEXT_FULL;
         context.Rip=begin+offsets[i];context.Rbp=previous;context.Rsp=(DWORD64)initial;
-        context.R11=factory_cell;
+        initial[1]=returned;context.R11=(DWORD64)(initial+1);
         if(i==1) context.Rsp=(DWORD64)(initial-1);
         else if(i>=2 && i<=5) context.Rsp=(DWORD64)(initial-29);
         else if(i==6) context.Rsp=(DWORD64)(initial-1);

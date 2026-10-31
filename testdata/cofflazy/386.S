@@ -31,9 +31,8 @@ movdqu 80(%esp),%xmm4
 movdqu 96(%esp),%xmm5
 movdqu 112(%esp),%xmm6
 movdqu 128(%esp),%xmm7
-movl 4(%esp),%eax
 movl 8(%esp),%ecx
 movl 12(%esp),%edx
 movl %ebp,%esp
 popl %ebp
-jmp *0x23456780
+jmp *%eax
