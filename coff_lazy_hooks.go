@@ -49,7 +49,9 @@ type DelayImportResult struct {
 // session/provider locks and can reenter other imports. Recursion into the
 // same unresolved import on one native thread fails with native error 87.
 // A hook panic becomes a native invalid-parameter failure after Go returns.
-// This API does not implement the binary __pfnDli*Hook2 variable convention.
+// Go results take priority over selected raw-image __pfnDli*Hook2 variables.
+// Empty results fall through to those synchronous SDK hooks. EndProcessing
+// notifies both hooks and ignores both results.
 type DelayImportHooks struct {
 	Notify  func(DelayImportEvent, DelayImportInfo) DelayImportResult
 	Failure func(DelayImportEvent, DelayImportInfo) DelayImportResult

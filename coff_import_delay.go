@@ -20,7 +20,7 @@ const (
 	DelayImportsEager
 	// DelayImportsLazy installs image-owned native entries and resolves on first
 	// call. Supports recognized raw templates on Windows amd64/arm64/386 hosts.
-	// Go hooks are separate from native __pfnDli*Hook2 variables.
+	// Go hooks compose with selected image-owned SDK __pfnDli*Hook2 variables.
 	DelayImportsLazy
 )
 

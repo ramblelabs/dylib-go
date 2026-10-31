@@ -35,6 +35,8 @@ movdqu %xmm7, 208(%rsp)
 movabsq $0x34567898, %rcx
 movabsq $0x456789a8, %rax
 call *%rax
+// This call owns the Windows shadow/home area above its return address.
+movq %rax, 16(%rbp)
 movdqu 96(%rsp), %xmm0
 movdqu 112(%rsp), %xmm1
 movdqu 128(%rsp), %xmm2
@@ -50,7 +52,7 @@ movq 56(%rsp), %r8
 movq 64(%rsp), %r9
 movq 72(%rsp), %rdi
 movq 80(%rsp), %rsi
-movabsq $0x23456780, %r11
+leaq 16(%rbp), %r11
 addq $224, %rsp
 popq %rbp
 // Force REX.W+B: LLVM otherwise omits W, which Windows' tail unwinder

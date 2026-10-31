@@ -13,3 +13,7 @@ func ReadCOFFDelayRequest(address uintptr) (COFFDelayRequest, bool) {
 func SetCOFFDelayResult(address, target, module uintptr, exception, nativeError uint32) bool {
 	return false
 }
+func SetCOFFDelayTransient(address uintptr, transient bool) {}
+func CallCOFFDelayHook(address, variable uintptr, event uint32, module, target uintptr, nativeError uint32, transient bool) uintptr {
+	return 0
+}

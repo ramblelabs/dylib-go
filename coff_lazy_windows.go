@@ -65,13 +65,22 @@ func dispatchCOFFLazyImport(address uintptr) (target uintptr) {
 		recovery = coffLazyResult{module: request.Module, address: request.Address,
 			owned: request.Module != 0 && request.Module != request.PreviousModule}
 	}
-	result, exception, err := image.providers.resolve(int(request.Slot), request.Thread, recovery)
+	allocation := image.slots[request.Slot]
+	hooks := image.providers.hooks
+	if image.nativeHooks.notify != 0 || image.nativeHooks.failure != 0 {
+		call := func(request, variable uintptr, event uint32, module, target uintptr, nativeError uint32, transient bool) uintptr {
+			atomic.StoreUintptr(nativeWord(image.base+uintptr(allocation.module)), module)
+			return native.CallCOFFDelayHook(request, variable, event, module, target, nativeError, transient)
+		}
+		hooks = image.nativeHooks.bind(address, hooks, call)
+	}
+	result, exception, err := image.providers.resolveWithHooks(int(request.Slot), request.Thread, recovery, hooks)
 	code := uint32(0)
 	if exception != 0 {
 		code = nativeDelayError(err, exception)
 	}
-	allocation := image.slots[request.Slot]
 	atomic.StoreUintptr(nativeWord(image.base+uintptr(allocation.module)), result.module)
+	native.SetCOFFDelayTransient(address, result.transient)
 	native.SetCOFFDelayResult(address, result.address, result.module, exception, code)
 	return result.address
 }

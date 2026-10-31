@@ -14,13 +14,14 @@ type coffLazyAllocation struct {
 }
 
 type coffLazyImage struct {
-	providers *coffLazyProviders
-	aliases   map[*coffImport]int
-	slots     []coffLazyAllocation
-	id        uintptr
-	base      uintptr
-	functions *runtimeFunctions
-	keep      bool
+	providers   *coffLazyProviders
+	aliases     map[*coffImport]int
+	slots       []coffLazyAllocation
+	id          uintptr
+	base        uintptr
+	functions   *runtimeFunctions
+	keep        bool
+	nativeHooks coffNativeDelayHooks
 }
 
 func newCOFFLazyImage(objects []*object, imports map[*coffImport]uintptr, opts Options, borrowed map[string]uintptr) (*coffLazyImage, error) {
@@ -74,6 +75,10 @@ func nativeWord(address uintptr) *uintptr {
 func (lazy *coffLazyImage) prepare(im *image) error {
 	if lazy == nil {
 		return nil
+	}
+	var err error
+	if lazy.nativeHooks, err = im.coffNativeDelayHooks(); err != nil {
+		return err
 	}
 	id, callback, err := registerCOFFLazyImage(lazy)
 	if err != nil {

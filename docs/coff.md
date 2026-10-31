@@ -145,7 +145,10 @@ boundary calls the public Windows callback API, publishes the canonical target
 and raises failures after Go returns. Go-generated amd64/arm64/386 entries
 preserve the supported incoming native arguments and tail-call the target.
 Internal x64/ARM64 slow frames always have owned Windows unwind tables,
-including when `RegisterUnwind` is false for the user's raw objects. This does
+including when `RegisterUnwind` is false for the user's raw objects. AMD64 slow
+entries use the Windows caller-owned shadow area to tail-call the resolver
+result without forcing a cache write; 386 uses volatile EAX. Custom calling
+conventions outside the qualified Windows ABIs are excluded. This does
 not register unsupported language exception handlers or missing user frames.
 
 `Options.DelayHooks` supplies value-based Go notifications and failure hooks:
@@ -190,9 +193,57 @@ native thread and exception scope.
 
 The SDK information describes image-owned canonical cells and descriptors,
 with RVAs relative to the raw image. Original helper/table adjacency,
-`__ImageBase` assumptions and the binary `__pfnDliNotifyHook2` /
-`__pfnDliFailureHook2` variable ABI are outside this interface. AVX YMM/ZMM
+`__ImageBase` assumptions are outside this interface. AVX YMM/ZMM
 extensions and AArch64 scalable-vector calling conventions are unqualified.
+
+### Native SDK hook variables
+
+Selected raw objects can define `__pfnDliNotifyHook2` and
+`__pfnDliFailureHook2` with the installed Windows SDK's `PfnDliHook` type.
+Lazy resolution calls these variables using `WINAPI` and a live `DelayLoadInfo`.
+Ordinary read-only/data/BSS pointer storage and common definitions are accepted;
+truncated, misaligned, executable, TLS and lifecycle storage are rejected.
+The existing COFF i386 name normalization applies. Weak forwarding aliases,
+imported pointer variables, process-wide lookup and automatic archive extraction
+for these names are outside this subset. Select an archived definition with an
+explicit link root if it is otherwise unused.
+
+The pointer value is read for every notification, so native CRT startup can
+install mutable hooks before the first import call. Initialize or change these
+variables only while native callers are quiescent. Const initialized variables
+are supported too. The hook's code and any external replacement code must stay
+alive through image cleanup or explicit cache reset.
+
+Go hooks run first. A nonempty Go result suppresses the corresponding native
+hook; an empty result falls through. End notifications reach both hooks and
+ignore both results. The SDK events use the same notification/failure split as
+the table above. Native pre-load and load-failure results transfer one acquired
+DLL reference. Native procedure replacements retain their provider through the
+selected module or an external owner.
+
+A native Start result bypasses loading and lookup **without caching**: later
+calls still enter that hook, unless another concurrent resolver has cached a
+normal target. This follows the SDK helper bypass behavior. A Go Start result
+keeps the existing cached replacement behavior. Normal targets are published
+in the canonical cell before the native End notification, so End can inspect
+`pfnCur` and `*ppfn` or reenter a resolved import. Transient Start results leave
+that cell unresolved.
+
+The C hooks are synchronous, normal-returning adapters into the Go resolver.
+Handle native exceptions inside the hook; exceptions, `longjmp` and retained
+`DelayLoadInfo` pointers must not cross the Go callback boundary. Return a
+replacement to recover a failure, or zero to continue to the existing native
+failure transport. Do not modify descriptors, export identity or cache cells.
+Image-owned descriptors/cells, canonical selection, recursion checks and
+quiescent unload remain the Go resolver's policy. This is not a replacement for
+an original PE helper's table layout or native nonlocal-control-flow behavior.
+
+Native tests compile the actual SDK hook declarations with mutable, const and
+CRT-installed cells, named/ordinal imports, module/procedure failure recovery,
+Go priority, nested C/Go reentry with collection, and cache/reset behavior at
+`-O0`/`-O2`. See [the hook fixture](../testdata/cofflazy/hooks.c),
+[Microsoft's hook contract](https://learn.microsoft.com/en-us/cpp/build/reference/error-handling-and-notification)
+and [MinGW's helper](https://github.com/mingw-w64/mingw-w64/blob/master/mingw-w64-crt/misc/delayimp.c).
 
 ### Explicit unload and finalization
 
