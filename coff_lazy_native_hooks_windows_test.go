@@ -65,7 +65,13 @@ func nativeHookFixture(t *testing.T, opt, storage string, mode uint32, export st
 		args = append(args, "-DHOOK_INIT_CRT=1")
 	}
 	hookObject := compile(t, "testdata/cofflazy/hooks.c", filepath.Join(t.TempDir(), "hooks.obj"), args...)
-	parts, _ := delayFixtureParts(t, target, []delayFixtureEntry{{"add", export, ordinal}, {"other", "", 7}})
+	importDLL := "probe.dll"
+	if mode == 4 {
+		// A Go override may already retain probe.dll. An absent import name
+		// prevents Windows from satisfying this failure case from that loan.
+		importDLL = "dylib-go-missing-hook-provider.dll"
+	}
+	parts, _ := delayFixturePartsDLL(t, target, []delayFixtureEntry{{"add", export, ordinal}, {"other", "", 7}}, "", importDLL)
 	opts := Options{DelayImports: DelayImportsLazy, LibraryPaths: []string{dir}, DelayHooks: hooks}
 	if mode == 4 {
 		opts.LibraryPaths = nil
