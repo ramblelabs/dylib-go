@@ -19,12 +19,27 @@ func (im *image) coffNativeDelayHooks() (coffNativeDelayHooks, error) {
 	}{{"__pfnDliNotifyHook2", &hooks.notify}, {"__pfnDliFailureHook2", &hooks.failure}} {
 		d, ok := im.defs[entry.name]
 		if !ok {
-			if _, alias := im.aliases[entry.name]; alias {
+			d, ok = im.aliases[entry.name]
+			if !ok {
+				continue // Do not search process/DLL exports for a data variable.
+			}
+			// Reuse ordinary weak selection and cycle checks, but restrict the
+			// result to selected storage. Explicit native definitions still
+			// shadow weak fallbacks and are rejected below as unowned storage.
+			selected := image{defs: im.defs, aliases: im.aliases, hooks: im.hooks}
+			resolved, offset, err := selected.resolveAddressDefinition(d.o, d.index)
+			if err != nil {
+				return hooks, fmt.Errorf("native delay hook %s: %w", entry.name, err)
+			}
+			if offset != 0 {
 				return hooks, fmt.Errorf("%s must define image-owned pointer storage", entry.name)
 			}
-			continue // Do not search process/DLL exports for a data variable.
+			d = resolved
 		}
 		symbol := d.sym()
+		if symbol.tls {
+			return hooks, fmt.Errorf("%s must define image-owned pointer storage", entry.name)
+		}
 		var offset, size uint64
 		if symbol.section == -2 {
 			allocation, ok := im.common[symbol.name]
@@ -33,7 +48,7 @@ func (im *image) coffNativeDelayHooks() (coffNativeDelayHooks, error) {
 			}
 			offset, size = allocation.offset, allocation.size
 		} else {
-			if symbol.section <= 0 || symbol.section >= len(d.o.sections) || symbol.tls {
+			if symbol.section <= 0 || symbol.section >= len(d.o.sections) {
 				return hooks, fmt.Errorf("%s must define image-owned pointer storage", entry.name)
 			}
 			section := d.o.sections[symbol.section]

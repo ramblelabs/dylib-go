@@ -203,10 +203,16 @@ Selected raw objects can define `__pfnDliNotifyHook2` and
 Lazy resolution calls these variables using `WINAPI` and a live `DelayLoadInfo`.
 Ordinary read-only/data/BSS pointer storage and common definitions are accepted;
 truncated, misaligned, executable, TLS and lifecycle storage are rejected.
-The existing COFF i386 name normalization applies. Weak forwarding aliases,
-imported pointer variables, process-wide lookup and automatic archive extraction
-for these names are outside this subset. Select an archived definition with an
-explicit link root if it is otherwise unused.
+The existing COFF i386 name normalization applies. Selected COFF weak externals
+can forward to this storage, including chains and common definitions. The
+ordinary weak resolver chooses selected strong definitions before fallbacks and
+rejects cycles. Explicit native definitions that shadow a weak name or target
+are rejected as unowned storage; hook selection does not search DLL/process
+exports. Imported pointer variables remain outside this subset.
+
+Archive selection keeps the ordinary NOLIBRARY/LIBRARY/ALIAS rules. Hook names
+do not trigger additional extraction. Select an otherwise unused alias member
+with an ordinary defined link root or an explicit archive-member selection.
 
 The pointer value is read for every notification, so native CRT startup can
 install mutable hooks before the first import call. Initialize or change these
@@ -241,7 +247,10 @@ an original PE helper's table layout or native nonlocal-control-flow behavior.
 Native tests compile the actual SDK hook declarations with mutable, const and
 CRT-installed cells, named/ordinal imports, module/procedure failure recovery,
 Go priority, nested C/Go reentry with collection, and cache/reset behavior at
-`-O0`/`-O2`. See [the hook fixture](../testdata/cofflazy/hooks.c),
+`-O0`/`-O2`. Weak-record controls cover all three search modes and Windows
+targets; native tests execute chains, strong overrides, const/CRT storage,
+failure returns, mutable cells and selected/unused metadata archives.
+See [the hook fixture](../testdata/cofflazy/hooks.c),
 [Microsoft's hook contract](https://learn.microsoft.com/en-us/cpp/build/reference/error-handling-and-notification)
 and [MinGW's helper](https://github.com/mingw-w64/mingw-w64/blob/master/mingw-w64-crt/misc/delayimp.c).
 

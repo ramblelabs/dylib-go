@@ -56,13 +56,16 @@ func nativeHookFixture(t *testing.T, opt, storage string, mode uint32, export st
 			args = append(args, "--sysroot="+root)
 		}
 	}
-	if storage == "const" {
+	if storage == "const" || storage == "weak_const" {
 		args = append(args, "-DHOOK_STORAGE=const", "-DHOOK_CONST=1")
 	}
 	// The GNU target uses the installed native SDK. GNU/MSVC COFF C calls share
 	// these qualified Windows ABIs, including SDK WINAPI on 386.
-	if storage == "crt" {
+	if storage == "crt" || storage == "weak_crt" {
 		args = append(args, "-DHOOK_INIT_CRT=1")
+	}
+	if strings.HasPrefix(storage, "weak") {
+		args = append(args, "-DHOOK_ALIAS_STORAGE=1")
 	}
 	hookObject := compile(t, "testdata/cofflazy/hooks.c", filepath.Join(t.TempDir(), "hooks.obj"), args...)
 	importDLL := "probe.dll"
@@ -85,7 +88,33 @@ func nativeHookFixture(t *testing.T, opt, storage string, mode uint32, export st
 	load(t, s, consumer, hookObject)
 	load(t, s, writeComponentObjects(t, t.TempDir(), parts)...)
 	nativeHookImports(t, s)
-	if err := s.Link("entry"); err != nil {
+	roots := []string{"entry"}
+	if strings.HasPrefix(storage, "weak") {
+		data, _ := coffAssembly(t, target, nativeDelayHookAliases(target, storage))
+		paths := writeComponentObjects(t, t.TempDir(), [][]byte{data})
+		if strings.HasPrefix(storage, "weak_archive") {
+			archive := filepath.Join(t.TempDir(), "hooks.lib")
+			command(t, "llvm-ar", append([]string{"rcs", archive}, paths...)...)
+			paths = []string{archive}
+			if storage == "weak_archive" {
+				roots = append(roots, "hook_alias_root")
+			}
+		}
+		load(t, s, paths...)
+		if storage == "weak_strong" {
+			prefix, word, alignment := "", ".quad", 3
+			if runtime.GOARCH == "386" {
+				prefix, word, alignment = "_", ".long", 2
+			}
+			strong := fmt.Sprintf(".data\n.p2align %d\n", alignment)
+			for _, name := range []string{"__pfnDliNotifyHook2", "__pfnDliFailureHook2"} {
+				strong += fmt.Sprintf(".globl %s%s\n%s%s:\n%s 0\n", prefix, name, prefix, name, word)
+			}
+			data, _ = coffAssembly(t, target, strong)
+			load(t, s, writeComponentObjects(t, t.TempDir(), [][]byte{data})...)
+		}
+	}
+	if err := s.Link(roots...); err != nil {
 		t.Fatal(err)
 	}
 	*nativeHookWord32(t, s, "hook_mode") = mode
