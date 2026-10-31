@@ -24,7 +24,7 @@ func TestNativeUnpublishedCOFFTLSCleanupRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	im, err := newImage(objects, defs, s.external, nil, false, true)
+	im, err := newImage(objects, defs, s.external, nil, false, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,7 +17,7 @@ typedef struct {
     unsigned ordinal;
 } dylib_coff_delay_entry;
 typedef struct dylib_coff_delay_request {
-    uintptr_t owner, slot, thread;
+    uintptr_t owner, slot, thread, before_module;
     unsigned recovering;
     DWORD exception;
     DelayLoadInfo info;
@@ -63,6 +63,7 @@ static uintptr_t __cdecl dylib_coff_delay_resolve(dylib_coff_delay_entry *entry)
             request.exception != ERROR_INVALID_PARAMETER; ++attempt) {
         DWORD error = request.exception ? request.exception : ERROR_INVALID_PARAMETER;
         ULONG_PTR parameters[] = {(ULONG_PTR)&request.info};
+        request.before_module = (uintptr_t)request.info.hmodCur;
         RaiseException(VcppException(ERROR_SEVERITY_ERROR, error), 0, 1, parameters);
         request.recovering = 1;
         request.exception = 0;
@@ -128,7 +129,8 @@ func ReadCOFFDelayRequest(address uintptr) (COFFDelayRequest, bool) {
 		Owner: uintptr(request.owner), Slot: uintptr(request.slot), Thread: uintptr(request.thread),
 		Recovering: request.recovering != 0,
 		Module:     *(*uintptr)(unsafe.Pointer(&request.info.hmodCur)), Address: *(*uintptr)(unsafe.Pointer(&request.info.pfnCur)),
-		NativeError: uint32(request.info.dwLastError), Exception: uint32(request.exception),
+		PreviousModule: uintptr(request.before_module),
+		NativeError:    uint32(request.info.dwLastError), Exception: uint32(request.exception),
 	}, true
 }
 

@@ -72,6 +72,21 @@ func LookupOrdinal(h uintptr, ordinal uint16) uintptr {
 	p, _, _ := getProcAddress.Call(h, uintptr(ordinal))
 	return p
 }
+
+// LookupImport preserves the actual Win32 failure for delayed-import hooks.
+func LookupImport(h uintptr, name string, ordinal uint16) (uintptr, error) {
+	if h == 0 {
+		return 0, syscall.Errno(6) // ERROR_INVALID_HANDLE.
+	}
+	if ordinal == 0 {
+		return syscall.GetProcAddress(syscall.Handle(h), name)
+	}
+	p, _, err := getProcAddress.Call(h, uintptr(ordinal))
+	if p == 0 {
+		return 0, err
+	}
+	return p, nil
+}
 func Close(h uintptr) error {
 	if h == 0 {
 		return fmt.Errorf("invalid library handle")

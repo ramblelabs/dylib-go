@@ -18,16 +18,20 @@ const (
 	// DelayImportsEager resolves imports at Link, before any native initializer.
 	// It bypasses lazy helper hooks and retains providers through Session.Close.
 	DelayImportsEager
+	// DelayImportsLazy installs image-owned native entries and resolves on first
+	// call. Supports recognized raw templates on Windows amd64/arm64/386 hosts.
+	// Go hooks are separate from native __pfnDli*Hook2 variables.
+	DelayImportsLazy
 )
 
 func checkCOFFDelayImports(objects []*object, mode DelayImportMode) error {
-	if mode != DelayImportsDisabled && mode != DelayImportsEager {
+	if mode != DelayImportsDisabled && mode != DelayImportsEager && mode != DelayImportsLazy {
 		return fmt.Errorf("invalid delay-import mode %d", mode)
 	}
 	for _, o := range objects {
 		for _, s := range o.symbols {
-			if s.imported != nil && s.imported.entry.delay && mode != DelayImportsEager {
-				return fmt.Errorf("%s: raw COFF delay imports require Options.DelayImports = DelayImportsEager", o.info.Name)
+			if s.imported != nil && s.imported.entry.delay && mode == DelayImportsDisabled {
+				return fmt.Errorf("%s: raw COFF delay imports require Options.DelayImports = DelayImportsEager or DelayImportsLazy", o.info.Name)
 			}
 		}
 	}

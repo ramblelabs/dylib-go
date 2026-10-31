@@ -20,6 +20,10 @@ func delayFixtureParts(t *testing.T, target string, entries []delayFixtureEntry)
 }
 
 func delayFixturePartsExtra(t *testing.T, target string, entries []delayFixtureEntry, extra string) ([][]byte, []*object) {
+	return delayFixturePartsDLL(t, target, entries, extra, "probe.dll")
+}
+
+func delayFixturePartsDLL(t *testing.T, target string, entries []delayFixtureEntry, extra, dll string) ([][]byte, []*object) {
 	t.Helper()
 	prefix, word, feat := "", ".quad", ""
 	if strings.HasPrefix(target, "i686") {
@@ -83,7 +87,7 @@ func delayFixturePartsExtra(t *testing.T, target string, entries []delayFixtureE
 		parts = append(parts, b)
 		objects = append(objects, o)
 	}
-	body := ".section .idata$4,\"dr\"\n" + word + " 0\n.section .idata$5,\"dw\"\n" + word + " 0\n.section .idata$7,\"dr\"\n.global " + prefix + "__fixture_iname\n" + prefix + "__fixture_iname:\n.asciz \"probe.dll\"\n"
+	body := ".section .idata$4,\"dr\"\n" + word + " 0\n.section .idata$5,\"dw\"\n" + word + " 0\n.section .idata$7,\"dr\"\n.global " + prefix + "__fixture_iname\n" + prefix + "__fixture_iname:\n.asciz \"" + dll + "\"\n"
 	b, o = coffAssembly(t, target, feat+body)
 	parts = append(parts, b)
 	objects = append(objects, o)
@@ -173,10 +177,10 @@ func TestCOFFDelayImportPolicy(t *testing.T) {
 		t.Fatal("fixture")
 	}
 	// Policy validation is independent of mapping and foreign code execution.
-	for _, mode := range []DelayImportMode{DelayImportsDisabled, DelayImportsEager, 42} {
+	for _, mode := range []DelayImportMode{DelayImportsDisabled, DelayImportsEager, DelayImportsLazy, 42} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			err := checkCOFFDelayImports([]*object{out}, mode)
-			if mode == DelayImportsEager {
+			if mode == DelayImportsEager || mode == DelayImportsLazy {
 				if err != nil {
 					t.Fatal(err)
 				}

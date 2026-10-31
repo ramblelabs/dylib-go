@@ -123,7 +123,7 @@ EXPORT int32_t check_nonvolatile_fp(int32_t seed,int32_t unused) {
     // Keep real nonvolatile FP registers live across the first and cached
     // calls, including the native helper and its allocating Go callback.
     __asm__ volatile("" : "+w"(a),"+w"(b),"+w"(c),"+w"(d),"+w"(e),"+w"(f),"+w"(g),"+w"(h));
-    int32_t result=probe(0,seed);
+    int32_t result=((int32_t (*)(int32_t,int32_t))factory_entry)(seed,42-seed);
     // Output-only operands read the physical registers without restoring the
     // earlier C variables first, including when compiled without optimization.
     __asm__ volatile("" : "=w"(a),"=w"(b),"=w"(c),"=w"(d),"=w"(e),"=w"(f),"=w"(g),"=w"(h));
@@ -170,6 +170,17 @@ static LONG WINAPI recover(EXCEPTION_POINTERS *exception) {
     else if(recovery_mode==3) {
         if((code&0xff)==ERROR_MOD_NOT_FOUND) info->hmodCur=(HMODULE)recovery_module;
         else info->pfnCur=(FARPROC)recovery_target;
+    }
+    else if(recovery_mode==4 || recovery_mode==5) {
+        if((code&0xff)==ERROR_MOD_NOT_FOUND) {
+            // Transfer a real, separately acquired loader reference to the
+            // image. The control DLL still retains its original reference.
+            HMODULE owned=0;
+            if(!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+                    (LPCSTR)recovery_target,&owned)) return EXCEPTION_CONTINUE_SEARCH;
+            info->hmodCur=owned;
+        } else if(recovery_mode==5) info->pfnCur=(FARPROC)recovery_target;
+        else return EXCEPTION_CONTINUE_SEARCH;
     }
     recovered_exception=exception->ExceptionRecord;
     return EXCEPTION_CONTINUE_EXECUTION;

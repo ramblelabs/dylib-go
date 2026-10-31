@@ -29,6 +29,9 @@ func (s *Symbol) Acquire() (*SymbolLease, error) {
 	if s.owner.closed {
 		return nil, ErrClosed
 	}
+	if s.owner.unloading {
+		return nil, ErrDelayImportsBusy
+	}
 	s.owner.calls++
 	return &SymbolLease{owner: s.owner, address: s.address}, nil
 }
