@@ -31,7 +31,6 @@ Metadata inspection uses pure Go and can read ELF, Mach-O (including universal c
 
 For PE images, `Inspect` includes ordinary, bound and delay import directories in `Info.PEImports`; the standalone `peinfo.Inspect` API reads image bytes directly. It preserves names/ordinals separately from cached IAT addresses. `InspectCOFFBoundImportDirectory` reads auxiliary bound metadata from a raw COFF object using an explicit root symbol and byte length. See [PE and COFF bound metadata](docs/pe-imports.md). Recognized raw GNU-style delay-import function stubs support the following policies on Windows amd64/arm64/386; see [delay-import limits](docs/coff.md#raw-delay-imports).
 
-
 | Raw COFF delay policy | Provider loading | Hooks and unloading |
 | --- | --- | --- |
 | `DelayImportsDisabled` (default) | Selected delay imports are rejected at link time | Unused archive members remain inert |
