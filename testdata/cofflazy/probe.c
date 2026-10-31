@@ -123,7 +123,7 @@ EXPORT int32_t check_nonvolatile_fp(int32_t seed,int32_t unused) {
     // Keep real nonvolatile FP registers live across the first and cached
     // calls, including the native helper and its allocating Go callback.
     __asm__ volatile("" : "+w"(a),"+w"(b),"+w"(c),"+w"(d),"+w"(e),"+w"(f),"+w"(g),"+w"(h));
-    int32_t result=probe(0,seed);
+    int32_t result=((int32_t (*)(int32_t,int32_t))factory_entry)(seed,42-seed);
     // Output-only operands read the physical registers without restoring the
     // earlier C variables first, including when compiled without optimization.
     __asm__ volatile("" : "=w"(a),"=w"(b),"=w"(c),"=w"(d),"=w"(e),"=w"(f),"=w"(g),"=w"(h));
