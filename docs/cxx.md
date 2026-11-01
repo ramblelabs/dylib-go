@@ -262,8 +262,13 @@ queries to return `ClassDeclaration` for one explicit complete, non-cv class nam
 or alias. `Callables` lists directly declared public constructors, destructors,
 ordinary/static methods, operators and conversions in declaration order. Implicit,
 inherited, non-public and function-template declarations are excluded. Class
-template specializations can be selected through named aliases. Anonymous records
-without a compiler record name are not supported.
+template specializations can be selected through named aliases. Named lambda
+aliases such as `decltype(factory(0))` and `decltype(variable)` can be resolved
+through their original declaration references, including forwarding factories,
+static/member factories and variables initialized by a factory. The closure's
+[call operator has public access](https://eel.is/c++draft/expr.prim.lambda.closure#5)
+even though its compiler record has no name.
+Generic lambda operators remain function templates and are excluded.
 
 `NativeType` preserves the compiler's C++ spelling in its declaring class context,
 including qualifiers and calling convention attributes. Parameters retain names,
@@ -281,13 +286,24 @@ responsible for exact prototype and access checks. Discovery does not instantiat
 arbitrary function templates, infer ownership, walk all declarations or generate
 exports automatically.
 
-Two bounded queries identify the selected record: the first obtains a short name
-for filtering, and the second associates its alias and complete definition by
+For named records, two bounded queries identify the selected record: the first
+obtains a short name for filtering, and the second associates its alias and
+complete definition by
 declaration IDs from that same compiler invocation. Namespace collisions, forward
 declarations and class-valued template arguments therefore do not select unrelated
 classes. The original header path, target and flags are preserved as for base
 discovery. Each AST is limited to 32 MiB, 150,000 nodes and 256 levels; compiler
 diagnostics are bounded and cancellation covers both queries.
+
+Anonymous closure records use at most eight filtered declaration queries after
+the initial alias query. Each can follow named function/variable references from
+the preceding result; repeated filters are not queried again. Every selected
+alias and definition is matched by declaration ID within the same invocation.
+Unevaluated expressions and template arguments cannot select the record of an
+argument or receiver. Unresolvable anonymous forms and longer forwarding chains
+return an error. The same AST, IO and cancellation bounds apply to every query.
+Native Go/llgo tests discover a mutable captured operator, generate its explicit
+C facade, and execute stateful calls and owner destruction at `-O0`/`-O2`.
 
 ## Coverage and remaining work
 
@@ -316,7 +332,7 @@ specializations, access sections, overloads, operators, default/deleted members,
 abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
-Automatic lambda and whole-header declaration discovery,
+Whole-header lambda/declaration discovery,
 ref-qualified/volatile members, variadics, inheritance discovery beyond selected types,
 downcasts/crosscasts and C++ header discovery remain outside this manifest. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately

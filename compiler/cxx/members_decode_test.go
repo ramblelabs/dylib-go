@@ -3,6 +3,7 @@ package cxx
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -59,6 +60,24 @@ func TestMemberDiscoveryRecordIdentity(t *testing.T) {
 			t.Fatal("forward/alias identity was confused with template arguments or another namespace", got, err)
 		}
 	}
+	t.Run("unevaluated_argument", func(t *testing.T) {
+		roots := memberFixture()
+		alias := &roots[3].Inner[0]
+		alias.Inner = append(alias.Inner, memberNode{Kind: "CallExpr", Inner: []memberNode{{Kind: "RecordType", Decl: &memberReference{ID: "wrong_argument", Kind: "CXXRecordDecl"}}}})
+		if got, err := selectedMembers(encodeMembers(t, roots)); err != nil || got == nil {
+			t.Fatal("unevaluated expression selected the argument's record", got, err)
+		}
+	})
+	t.Run("lambda_public_operator", func(t *testing.T) {
+		roots := memberFixture()
+		roots[2].Name, roots[2].TagUsed = "", "class"
+		roots[2].DefinitionData.IsLambda = true
+		roots[3].Inner[0].Inner[1].Decl.Name = ""
+		got, err := selectedMembers(encodeMembers(t, roots))
+		if err != nil || got == nil || len(got.Callables) != 1 {
+			t.Fatal("closure call operators must have public access", got, err)
+		}
+	})
 }
 
 func TestMemberDiscoveryMetadataValidation(t *testing.T) {
@@ -114,6 +133,16 @@ func TestMemberDiscoveryASTBudgets(t *testing.T) {
 			}
 		})
 	}
+	t.Run("declaration_references", func(t *testing.T) {
+		roots := memberFixture()
+		for i := 0; i < 100; i++ {
+			roots = append(roots, memberNode{Kind: "DeclRefExpr", ReferencedDecl: &memberReference{Kind: "FunctionDecl", Name: fmt.Sprintf("factory%d", i)}})
+		}
+		ast, err := decodeMemberAST(encodeMembers(t, roots), "query")
+		if err != nil || ast == nil || len(ast.references) != maxAnonymousMemberQueries {
+			t.Fatal("reference collection was not bounded", ast, err)
+		}
+	})
 }
 
 func TestMemberDiscoveryPublicAccess(t *testing.T) {
