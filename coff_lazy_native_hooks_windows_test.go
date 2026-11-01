@@ -18,6 +18,11 @@ import (
 
 func nativeHookImports(t *testing.T, s *Session) {
 	t.Helper()
+	load(t, s, writeComponentObjects(t, t.TempDir(), nativeHookImportRecords())...)
+}
+
+func nativeHookImportRecords() [][]byte {
+	var records [][]byte
 	machine := uint16(0x8664)
 	if runtime.GOARCH == "386" {
 		machine = 0x14c
@@ -35,8 +40,9 @@ func nativeHookImports(t *testing.T, s *Session) {
 			policy = 3
 		}
 		data := shortImport(machine, 0, policy, name, "kernel32.dll", "", 0)
-		load(t, s, writeComponentObjects(t, t.TempDir(), [][]byte{data})...)
+		records = append(records, data)
 	}
+	return records
 }
 
 func nativeHookFixture(t *testing.T, opt, storage string, mode uint32, export string, ordinal uint16, hooks DelayImportHooks) (*Session, string) {
