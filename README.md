@@ -847,6 +847,11 @@ selects declarations and generates a callable C facade. ABI signatures, ownershi
 and export names remain explicit; discovery does not make unsupported C++ types
 directly callable.
 
+`cxx.DiscoverClasses` can first list complete accessible classes and aliases in
+an explicit namespace, including named child namespaces, public nested types,
+template-specialization aliases and lambda aliases. Compiler checks filter out
+incomplete and non-class types. See [namespace discovery and its bounds](docs/cxx.md#namespace-class-discovery).
+
 ## Native Swift calls with ABIBridge
 
 The optional [ABIBridge adapter](docs/abibridge.md) calls synchronous thin Swift functions on macOS amd64/arm64 through a separately built native facade. Go and llgo support fixed-width scalars, native pointers, explicitly described trivial Swift storage and formally indirect values without the Go `libffi` tag. Owned Swift values use complete metadata and copy/destroy witnesses. `InvokeManaged` borrows guaranteed arguments and owns returned values using explicit passing layouts. Generic calls, async/throws and device ABIs remain outside this adapter.

@@ -14,11 +14,34 @@ import (
 )
 
 func TestNativeDynamicDiscoveredLambdaFacade(t *testing.T) {
+	testDynamicDiscoveredLambdaFacade(t, "lambda_members::Captured")
+}
+
+func TestNativeDynamicNamespaceClassFacade(t *testing.T) {
 	header, err := filepath.Abs("testdata/lambda_members.hpp")
 	if err != nil {
 		t.Fatal(err)
 	}
-	declaration, err := cxx.DiscoverMembers(context.Background(), header, "lambda_members::Captured", cxx.DiscoveryOptions{Compiler: cppTool(t), Flags: cppTargetFlags()})
+	names, err := cxx.DiscoverClasses(context.Background(), header, "lambda_members", cxx.DiscoveryOptions{Compiler: cppTool(t), Flags: cppTargetFlags()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		if name == "lambda_members::Captured" {
+			testDynamicDiscoveredLambdaFacade(t, name)
+			return
+		}
+	}
+	t.Fatal("captured lambda alias was not discovered", names)
+}
+
+func testDynamicDiscoveredLambdaFacade(t *testing.T, name string) {
+	t.Helper()
+	header, err := filepath.Abs("testdata/lambda_members.hpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	declaration, err := cxx.DiscoverMembers(context.Background(), header, name, cxx.DiscoveryOptions{Compiler: cppTool(t), Flags: cppTargetFlags()})
 	if err != nil || declaration == nil || len(declaration.Callables) != 1 {
 		t.Fatal("discovered lambda operator", declaration, err)
 	}
