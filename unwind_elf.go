@@ -24,7 +24,7 @@ func (im *image) elfFrameSections() ([]uintptr, error) {
 				return nil, fmt.Errorf("%s: invalid ELF frame storage", o.info.Name)
 			}
 			b := im.mem[s.offset : s.offset+s.size]
-			fdes, err := im.validateFrameRecords(b, s.offset, framePolicy{language: true})
+			fdes, err := im.validateFrameRecords(b, s.offset, framePolicy{language: true, arm64RASigning: o.info.Arch == "arm64"})
 			if err != nil {
 				return nil, fmt.Errorf("%s: %s: %w", o.info.Name, s.name, err)
 			}

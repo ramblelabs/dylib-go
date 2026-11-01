@@ -183,6 +183,12 @@ intervals, frame metadata, siblings, shared ends, unchanged input bytes and limi
 
 Linux amd64/arm64 Go and llgo jobs, and native Go 386, execute optional ELF frame registration with libgcc, `_Unwind_Backtrace` through two raw C frames, and `_Unwind_Find_FDE` before/after close. Object/archive calls, default loading, validation retry and failed-initializer ownership are covered. Pure Go jobs inspect all three ELF producers and reject malformed CIE/FDE/CFI records.
 
+Linux ARM64 also runs these C frame checks and the C++ exception/retirement
+suite with Clang `-mbranch-protection=pac-ret` at `-O0`/`-O2`, through Go and
+both llgo execution modes. Portable tests relocate actual signed-return CFI,
+check its operand boundaries and reject use on other architectures; other
+pointer-authentication CFI remains unqualified.
+
 macOS amd64/arm64 Go and llgo jobs execute optional per-FDE DWARF registration with system libunwind, real object/archive stack traversal, before/after-close FDE lookup, validation retry and failed initialization cleanup. Pure Go jobs inspect real `__eh_frame` compiler output and verify explicit ARM64 pairs and implicit x86-64 address rebasing.
 
 CI pins merged llgo `main` commit `5926054cd0ae0e5a621557288e79d2c28bdb5fa2`, which includes the

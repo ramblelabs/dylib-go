@@ -78,6 +78,17 @@ variants, value-offset and GNU argument-size instructions. Expressions,
 `set_loc` and target-specific instructions remain
 unsupported. Structural validation does not verify CFI against machine code.
 
+Linux ARM64 also accepts the operand-free
+`DW_CFA_AARCH64_negate_ra_state` instruction emitted by Clang's
+`-mbranch-protection=pac-ret`. Go validates the CFI boundaries; the retained
+libgcc unwinder interprets the signed return-address state. Native C backtraces
+and C++ catch/rethrow/destruction tests cover `-O0`/`-O2`, object/archive inputs,
+concurrent images, deregistration and calls during Session retirement with Go
+and llgo. This qualifies the compiler's A-key, stack-pointer signing form.
+B-key augmentation, `FEAT_PAuth_LR`, the newer set-state/with-PC instructions,
+Mach-O signed frames and arm64e remain unqualified. See the
+[AArch64 DWARF call-frame instructions](https://github.com/ARM-software/abi-aa/blob/main/aadwarf64/aadwarf64.rst#call-frame-instructions).
+
 With `RegisterUnwind` enabled, the linker retains read-only
 `.gcc_except_table`/`.gcc_except_table.*` sections and their relocation
 dependencies. Non-null FDE LSDA pointers must reference these backed,
