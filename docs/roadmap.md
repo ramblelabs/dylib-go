@@ -204,6 +204,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Optional compiler-confirmed public/unambiguous base discovery among selected class names/aliases, including transitive/virtual inheritance, conditional compilation and native generated base views.
 - [x] Optional public direct callable discovery for selected class names/aliases, with declaration identity, overloads, native types, access filtering, class-template specializations and executed facade selection.
 - [x] Selected lambda member discovery through bounded decltype factory/variable references, forwarding and member factories, same-invocation record identity, public closure operators and native Go/llgo facade execution.
+- [x] Bounded namespace class/alias discovery, compiler-confirmed eligibility, namespace aliases/reopened definitions, public nested types, relative includes, preprocessing and native Go/llgo facade selection.
 - [ ] Whole-header class/lambda/function-template discovery, automatic ABI/ownership selection and inheritance discovery beyond selected names.
 - [x] Explicit retained session-to-session function/data symbol providers, transitive code leases and cleanup ordering without libffi.
 - [x] Explicit JSON/Go dependency manifests, exact declared ABI versions, multiple-root provider planning, retained import aliases, lazy archive export roots, ordered cleanup and failure rollback without libffi.

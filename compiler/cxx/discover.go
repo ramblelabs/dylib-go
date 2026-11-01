@@ -164,40 +164,9 @@ func baseProbes(names []string) (source, namespace string, probes []baseProbe, e
 }
 
 func decodeBases(data []byte, namespace string, names []string, probes []baseProbe) ([]BaseRelation, error) {
-	var ast struct {
-		Kind, Name string
-		Inner      []struct {
-			Kind, Name string
-			Type       struct{ DesugaredQualType string }
-		}
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := decoder.Decode(&ast); err != nil {
-		return nil, fmt.Errorf("cxx: invalid inheritance AST: %w", err)
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err != io.EOF || ast.Kind != "NamespaceDecl" || ast.Name != namespace {
-		return nil, fmt.Errorf("cxx: unexpected inheritance AST root or trailing data")
-	}
-	values := make(map[string]bool)
-	for _, node := range ast.Inner {
-		if node.Kind != "TypeAliasDecl" {
-			continue
-		}
-		if _, duplicate := values[node.Name]; duplicate {
-			return nil, fmt.Errorf("cxx: duplicate inheritance probe %q", node.Name)
-		}
-		switch node.Type.DesugaredQualType {
-		case namespace + "::Answer<true>":
-			values[node.Name] = true
-		case namespace + "::Answer<false>":
-			values[node.Name] = false
-		default:
-			return nil, fmt.Errorf("cxx: unrecognized inheritance probe %q", node.Name)
-		}
-	}
-	if len(values) != len(probes) {
-		return nil, fmt.Errorf("cxx: unexpected inheritance probe count")
+	values, err := decodeDiscoveryValues(data, namespace, len(probes))
+	if err != nil {
+		return nil, err
 	}
 	var result []BaseRelation
 	for _, probe := range probes {
@@ -214,4 +183,44 @@ func decodeBases(data []byte, namespace string, names []string, probes []basePro
 		}
 	}
 	return result, nil
+}
+
+// Both inheritance and class discovery use exact compiler Boolean answers.
+func decodeDiscoveryValues(data []byte, namespace string, count int) (map[string]bool, error) {
+	var ast struct {
+		Kind, Name string
+		Inner      []struct {
+			Kind, Name string
+			Type       struct{ DesugaredQualType string }
+		}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(&ast); err != nil {
+		return nil, fmt.Errorf("cxx: invalid discovery AST: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF || ast.Kind != "NamespaceDecl" || ast.Name != namespace {
+		return nil, fmt.Errorf("cxx: unexpected discovery AST root or trailing data")
+	}
+	values := make(map[string]bool)
+	for _, node := range ast.Inner {
+		if node.Kind != "TypeAliasDecl" {
+			continue
+		}
+		if _, duplicate := values[node.Name]; duplicate {
+			return nil, fmt.Errorf("cxx: duplicate discovery probe %q", node.Name)
+		}
+		switch node.Type.DesugaredQualType {
+		case namespace + "::Answer<true>":
+			values[node.Name] = true
+		case namespace + "::Answer<false>":
+			values[node.Name] = false
+		default:
+			return nil, fmt.Errorf("cxx: unrecognized discovery probe %q", node.Name)
+		}
+	}
+	if len(values) != count {
+		return nil, fmt.Errorf("cxx: unexpected discovery probe count")
+	}
+	return values, nil
 }

@@ -101,7 +101,7 @@ Queries accept 1–32 distinct qualified names of at most 256 bytes each. The he
 generated query and returned AST have 16 MiB, 1 MiB and 32 MiB limits; compiler
 diagnostics are bounded. The supplied context cancels the compiler process. Any
 validation, compiler or metadata failure returns no relations. This is selected
-type inspection, with no automatic class/member/header discovery.
+type inspection. Separate namespace and member queries are described below.
 
 ## Status and ownership
 
@@ -255,6 +255,36 @@ entries and C++ captures; freshly generated cgo/direct llgo callers execute thos
 native cases without libffi. Standard-library callables require the native C++
 SDK/runtime matching their producer.
 
+## Namespace class discovery
+
+`DiscoverClasses(ctx, header, namespace, DiscoveryOptions)` lists accessible
+complete, non-cv class names and aliases in one explicit namespace. Named child
+namespaces, inline namespaces, public nested types, reopened declarations,
+typedefs, named class-template specializations and lambda aliases participate.
+Namespace aliases retain the caller's spelling. Results follow the first
+declaration order and include declarations from relative/transitive includes.
+Target and preprocessing flags use the same original-header compiler path as
+the other discovery APIs.
+
+The query matches the selected namespace and its reopened definitions by
+declaration ID within one compiler invocation. A namespace alias with a different
+target name can require a second filtered query; IDs are resolved afresh.
+One final bounded compiler probe tests each candidate's class status,
+completeness and non-cv object-pointer conversion. Incomplete classes, unions,
+scalar/pointer/reference/function aliases therefore do not become bindings.
+Anonymous namespaces, function-local types, unspecialized class/alias templates,
+inherited names and using-declaration/directive imports are excluded. Empty
+namespaces return no names without an error.
+
+There are at most 256 candidate names, each at most 256 bytes, and at most three
+compiler queries. The existing 32 MiB AST, node/depth, diagnostic and cancellation
+bounds apply. A budget or compiler error returns no partial list. Select returned
+names for `DiscoverMembers` or `DiscoverBases`, then supply explicit ABI,
+ownership and export names to `Generate`. The
+[native integration test](../compiler/cxx/lambda_members_dynamic_test.go)
+discovers a lambda alias from its namespace, selects its member and executes the
+generated facade and destruction through Go/llgo at `-O0` and `-O2`.
+
 ## Selected member discovery
 
 `DiscoverMembers(ctx, header, name, DiscoveryOptions)` uses optional Clang C++17
@@ -332,7 +362,7 @@ specializations, access sections, overloads, operators, default/deleted members,
 abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
-Whole-header lambda/declaration discovery,
+Unrestricted whole-header declaration discovery,
 ref-qualified/volatile members, variadics, inheritance discovery beyond selected types,
 downcasts/crosscasts and C++ header discovery remain outside this manifest. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately

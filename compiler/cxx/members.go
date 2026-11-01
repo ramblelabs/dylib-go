@@ -135,6 +135,7 @@ type memberReference struct{ ID, Kind, Name string }
 
 type memberNode struct {
 	ReferencedDecl                                *memberReference
+	OriginalNamespace, NominatedNamespace         *memberReference
 	ID, Kind, Name, PreviousDecl, TagUsed, Access string
 	StorageClass, ExplicitlyDefaulted, Init       string
 	IsImplicit, CompleteDefinition                bool
@@ -149,6 +150,7 @@ type memberAST struct {
 	probe      *memberNode
 	records    map[string]*memberNode
 	references []string
+	namespaces []*memberNode
 }
 
 const (
@@ -202,6 +204,9 @@ func decodeMemberAST(data []byte, namespace string) (*memberAST, error) {
 				return fmt.Errorf("cxx: duplicate member query namespace")
 			}
 			ast.probe = n
+		}
+		if n.Kind == "NamespaceDecl" {
+			ast.namespaces = append(ast.namespaces, n)
 		}
 		// A decltype alias retains references to its factory or source variable.
 		// Their filtered declarations expose anonymous closure definitions.
