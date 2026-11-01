@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // CallableKind distinguishes native declarations without interpreting their ABI.
@@ -49,7 +51,9 @@ type ClassDeclaration struct {
 // DiscoverMembers queries one complete non-cv class name/alias using an optional
 // Clang-compatible C++17 compiler. It excludes implicit, inherited, non-public
 // and function-template declarations; named class-template specializations can
-// be selected through aliases. Native spellings are descriptive metadata only:
+// be selected through aliases. Lambda aliases can be resolved through decltype
+// factory/variable references, with at most eight declaration queries after the
+// initial alias query. Native spellings are descriptive metadata only:
 // the caller still chooses ABI signatures, ownership and C export names for
 // Generate, whose native compiler checks the exact selected prototypes.
 // Queries use the original header path and DiscoveryOptions target/flags, with
@@ -75,30 +79,49 @@ func DiscoverMembers(ctx context.Context, header, name string, opts DiscoveryOpt
 	if err != nil {
 		return nil, err
 	}
-	if !identifier(ref.Name) || len(ref.Name) > maxDiscoveryName {
+	if ref.Name != "" && (!identifier(ref.Name) || len(ref.Name) > maxDiscoveryName) {
 		return nil, fmt.Errorf("cxx: selected class requires a named record")
 	}
-	// Desugared spellings can omit namespaces. Use the short name only as a
-	// filter; resolve the definition by declaration ID from this second query.
+	// Names and expression references select filters, not record identities.
+	// Resolve the selected alias and definition together in each filtered query.
 	// IDs from separate compiler processes must never be compared.
-	source, namespace = memberProbe(name, ref.Name)
-	data, err = query.run(ctx, source, ref.Name)
-	if err != nil {
-		return nil, err
+	filters := []string{ref.Name}
+	anonymous := ref.Name == ""
+	if anonymous {
+		filters = first.references
 	}
-	ast, err := decodeMemberAST(data, namespace)
-	if err != nil {
-		return nil, err
+	seen := make(map[string]bool)
+	for len(filters) != 0 && len(seen) < maxAnonymousMemberQueries {
+		filter := filters[0]
+		filters = filters[1:]
+		if seen[filter] {
+			continue
+		}
+		seen[filter] = true
+		source, namespace = memberProbe(name, filter)
+		data, err = query.run(ctx, source, filter)
+		if err != nil {
+			return nil, err
+		}
+		ast, err := decodeMemberAST(data, namespace)
+		if err != nil {
+			return nil, err
+		}
+		ref, err = ast.selectedRecord()
+		if err != nil {
+			return nil, err
+		}
+		definition, err := ast.definition(ref.ID)
+		if anonymous && errors.Is(err, errMissingMemberDefinition) {
+			filters = append(filters, ast.references...)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return publicCallables(name, definition)
 	}
-	ref, err = ast.selectedRecord()
-	if err != nil {
-		return nil, err
-	}
-	definition, err := ast.definition(ref.ID)
-	if err != nil {
-		return nil, err
-	}
-	return publicCallables(name, definition)
+	return nil, fmt.Errorf("cxx: selected anonymous record has no definition within %d declaration queries", maxAnonymousMemberQueries)
 }
 
 func memberProbe(name, record string) (source, namespace string) {
@@ -111,25 +134,30 @@ func memberProbe(name, record string) (source, namespace string) {
 type memberReference struct{ ID, Kind, Name string }
 
 type memberNode struct {
+	ReferencedDecl                                *memberReference
 	ID, Kind, Name, PreviousDecl, TagUsed, Access string
 	StorageClass, ExplicitlyDefaulted, Init       string
 	IsImplicit, CompleteDefinition                bool
 	ExplicitlyDeleted, Variadic                   bool
 	Type                                          struct{ QualType string }
-	DefinitionData                                struct{ IsAbstract bool }
+	DefinitionData                                struct{ IsAbstract, IsLambda bool }
 	Decl                                          *memberReference
 	Inner                                         []memberNode
 }
 
 type memberAST struct {
-	probe   *memberNode
-	records map[string]*memberNode
+	probe      *memberNode
+	records    map[string]*memberNode
+	references []string
 }
 
 const (
-	maxMemberDepth = 256
-	maxMemberNodes = 150000
+	maxMemberDepth            = 256
+	maxMemberNodes            = 150000
+	maxAnonymousMemberQueries = 8
 )
+
+var errMissingMemberDefinition = errors.New("cxx: missing complete selected definition")
 
 func decodeMemberAST(data []byte, namespace string) (*memberAST, error) {
 	if len(data) > maxDiscoveryAST {
@@ -160,6 +188,7 @@ func decodeMemberAST(data []byte, namespace string) (*memberAST, error) {
 		}
 	}
 	ast := &memberAST{records: make(map[string]*memberNode)}
+	references := make(map[string]bool)
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	nodes := 0
 	var visit func(*memberNode, int) error
@@ -173,6 +202,18 @@ func decodeMemberAST(data []byte, namespace string) (*memberAST, error) {
 				return fmt.Errorf("cxx: duplicate member query namespace")
 			}
 			ast.probe = n
+		}
+		// A decltype alias retains references to its factory or source variable.
+		// Their filtered declarations expose anonymous closure definitions.
+		filter := ""
+		if r := n.ReferencedDecl; r != nil && (r.Kind == "FunctionDecl" || r.Kind == "VarDecl" || r.Kind == "CXXMethodDecl") {
+			filter = r.Name
+		} else if n.Kind == "MemberExpr" {
+			filter = n.Name
+		}
+		if len(ast.references) < maxAnonymousMemberQueries && len(filter) <= maxDiscoveryName && identifier(filter) && !references[filter] {
+			references[filter] = true
+			ast.references = append(ast.references, filter)
 		}
 		if (n.Kind == "CXXRecordDecl" || n.Kind == "ClassTemplateSpecializationDecl") && n.ID != "" {
 			if old := ast.records[n.ID]; old != nil {
@@ -232,7 +273,8 @@ func (ast *memberAST) selectedRecord() (*memberReference, error) {
 	var walk func(*memberNode) error
 	walk = func(n *memberNode) error {
 		// Box<Argument> contains Argument's RecordType as well as Box's.
-		if n.Kind == "TemplateArgument" {
+		// decltype expressions likewise contain argument/receiver records.
+		if n.Kind == "TemplateArgument" || strings.HasSuffix(n.Kind, "Expr") {
 			return nil
 		}
 		if n.Kind == "RecordType" && n.Decl != nil {
@@ -286,7 +328,7 @@ func (ast *memberAST) definition(id string) (*memberNode, error) {
 		queue = append(queue, successors[key]...)
 	}
 	if result == nil {
-		return nil, fmt.Errorf("cxx: missing complete selected definition")
+		return nil, errMissingMemberDefinition
 	}
 	return result, nil
 }
@@ -298,6 +340,9 @@ func publicCallables(name string, record *memberNode) (*ClassDeclaration, error)
 	case "struct":
 		access = "public"
 	case "class":
+		if record.DefinitionData.IsLambda {
+			access = "public"
+		}
 	default:
 		return nil, fmt.Errorf("cxx: selected definition is not a class/struct")
 	}

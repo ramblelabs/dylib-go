@@ -67,7 +67,7 @@ func TestNativeDiscoverMembersAcrossTargets(t *testing.T) {
 }
 
 func TestNativeDiscoverMembersRejectsUnsupportedTypes(t *testing.T) {
-	for _, name := range []string{"ConstCounter", "Pointer", "Incomplete", "NotClass", "Scalar", "Missing", "Lambda"} {
+	for _, name := range []string{"ConstCounter", "Pointer", "Incomplete", "NotClass", "Scalar", "Missing"} {
 		t.Run(name, func(t *testing.T) {
 			got, err := cxx.DiscoverMembers(context.Background(), "testdata/members.hpp", "members::"+name, cxx.DiscoveryOptions{Compiler: cppTool(t)})
 			if err == nil || got != nil {
