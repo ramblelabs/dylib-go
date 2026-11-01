@@ -41,10 +41,10 @@ func TestSymbolDependencyValidationAndRollback(t *testing.T) {
 	if err := consumer.DefineSymbol("second", symbol); err != nil {
 		t.Fatal(err)
 	}
-	if provider.calls != 2 || len(consumer.symbolDependencies) != 2 || consumer.defined["first"] != 0x1234 {
+	if provider.calls != 2 || len(consumer.symbolDependencies) != 2 || consumer.defined["first"] != 0x1234 || consumer.retainedDefinitions["first"] != 0x1234 || consumer.retainedDefinitions["second"] != 0x1234 || len(consumer.retainedDefinitions) != 2 {
 		t.Fatal("retained aliases changed the address or omitted ownership")
 	}
-	if err := consumer.DefineSymbol("first", symbol); err == nil || provider.calls != 2 || len(consumer.symbolDependencies) != 2 {
+	if err := consumer.DefineSymbol("first", symbol); err == nil || provider.calls != 2 || len(consumer.symbolDependencies) != 2 || len(consumer.retainedDefinitions) != 2 {
 		t.Fatal("duplicate definition leaked a lease")
 	}
 	consumer.Close()

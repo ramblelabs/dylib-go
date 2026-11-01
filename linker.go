@@ -92,6 +92,8 @@ type Session struct {
 	physicalPlans map[string]*abi.CallPlan // Index existing logical owners, not extra references.
 
 	symbolDependencies []*SymbolLease // Code providers retained through native cleanup.
+
+	retainedDefinitions map[string]uintptr // Names whose providers have matching leases.
 }
 
 type sessionClose struct {
@@ -598,6 +600,9 @@ func (s *Session) link(roots []string) error {
 	lazy, err := newCOFFLazyImage(objs, imports, s.opts, s.dllHandles)
 	if err != nil {
 		return err
+	}
+	if lazy != nil {
+		lazy.nativeDefinitions, lazy.retainedDefinitions = s.defined, s.retainedDefinitions
 	}
 	im, err := newImage(objs, defs, s.external, imports, s.opts.EmulatedTLS, s.opts.NativeTLS, lazy)
 	if err != nil {

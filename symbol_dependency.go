@@ -30,6 +30,10 @@ func (s *Session) DefineSymbol(name string, symbol *Symbol) error {
 	err = s.define(name, address)
 	if err == nil {
 		s.symbolDependencies = append(s.symbolDependencies, lease)
+		if s.retainedDefinitions == nil {
+			s.retainedDefinitions = make(map[string]uintptr)
+		}
+		s.retainedDefinitions[name] = address
 	}
 	s.mu.Unlock()
 	if err != nil {

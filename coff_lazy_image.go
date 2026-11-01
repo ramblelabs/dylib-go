@@ -22,6 +22,8 @@ type coffLazyImage struct {
 	functions   *runtimeFunctions
 	keep        bool
 	nativeHooks coffNativeDelayHooks
+
+	nativeDefinitions, retainedDefinitions map[string]uintptr
 }
 
 func newCOFFLazyImage(objects []*object, imports map[*coffImport]uintptr, opts Options, borrowed map[string]uintptr) (*coffLazyImage, error) {

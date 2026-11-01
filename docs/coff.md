@@ -206,9 +206,20 @@ truncated, misaligned, executable, TLS and lifecycle storage are rejected.
 The existing COFF i386 name normalization applies. Selected COFF weak externals
 can forward to this storage, including chains and common definitions. The
 ordinary weak resolver chooses selected strong definitions before fallbacks and
-rejects cycles. Explicit native definitions that shadow a weak name or target
-are rejected as unowned storage; hook selection does not search DLL/process
-exports. Imported pointer variables remain outside this subset.
+rejects cycles. Selected ordinary DATA/CONST imports may supply the variable,
+including IAT-only names and weak fallback targets. Binding uses the exported
+variable's address, rather than an IAT slot or a snapshot of its value. The
+ordinary import loader retains that DLL through native cleanup and delay reset.
+
+For a separate object/archive/library Session, resolve the pointer variable and
+pass its `Symbol` to `consumer.DefineSymbol(name, symbol)` before linking the
+consumer. The existing provider lease also covers hook calls after provider
+retirement, until consumer cleanup finishes. Explicit retained definitions take
+precedence over weak fallbacks; unmanaged `Define` addresses are rejected.
+Hook selection does not discover process/DLL exports implicitly. A `Symbol`
+has no type metadata: its provider must supply a full, aligned `PfnDliHook`
+pointer cell and retain any code stored in that cell. CODE and delayed imports
+cannot supply the cell. Hook variables do not introduce a new dependency loader.
 
 Archive selection keeps the ordinary NOLIBRARY/LIBRARY/ALIAS rules. Hook names
 do not trigger additional extraction. Select an otherwise unused alias member
@@ -250,6 +261,10 @@ Go priority, nested C/Go reentry with collection, and cache/reset behavior at
 `-O0`/`-O2`. Weak-record controls cover all three search modes and Windows
 targets; native tests execute chains, strong overrides, const/CRT storage,
 failure returns, mutable cells and selected/unused metadata archives.
+Separate DLL DATA/CONST imports and retained object/archive/library providers
+exercise actual variable addresses, weak chains, failure returns, live mutation,
+provider retirement and unload/reload on Windows Go amd64/arm64/386 and llgo
+amd64/arm64; llgo 386 remains unqualified.
 See [the hook fixture](../testdata/cofflazy/hooks.c),
 [Microsoft's hook contract](https://learn.microsoft.com/en-us/cpp/build/reference/error-handling-and-notification)
 and [MinGW's helper](https://github.com/mingw-w64/mingw-w64/blob/master/mingw-w64-crt/misc/delayimp.c).
