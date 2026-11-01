@@ -44,7 +44,8 @@ type framePolicy struct {
 	lsdaFixup  func(uint64, byte) error
 	record     func(start, length uint64, fde uintptr, personality bool) error
 
-	arm64RASigning bool // ELF A-key return-address signing; native unwinder interprets state.
+	arm64RASigning   bool // ELF AArch64 return-address signing; native unwinder interprets state.
+	canonicalizeBKey bool // Preparation only, before the private frame section becomes read-only.
 
 	personalityFixup func(uint64, byte) error
 }
@@ -82,6 +83,7 @@ func (im *image) validateFrameRecords(b []byte, imageOffset uint64, policy frame
 			if err != nil || version != 1 && version != 3 {
 				return nil, fmt.Errorf("unsupported CIE version")
 			}
+			augmentationOffset := end - len(r.b)
 			zero := bytes.IndexByte(r.b, 0)
 			if zero < 0 {
 				return nil, fmt.Errorf("unterminated CIE augmentation")
@@ -124,6 +126,11 @@ func (im *image) validateFrameRecords(b []byte, imageOffset uint64, policy frame
 					switch letter {
 					case 'R':
 						cie.encoding, err = data.byte()
+					case 'B':
+						if !policy.arm64RASigning {
+							return nil, fmt.Errorf("unsupported CIE augmentation %q", augmentation)
+						}
+						// The AArch64 B-key marker has no augmentation data.
 					case 'L':
 						if !policy.language {
 							return nil, fmt.Errorf("unsupported CIE augmentation %q", augmentation)
@@ -174,6 +181,16 @@ func (im *image) validateFrameRecords(b []byte, imageOffset uint64, policy frame
 			}
 			if err := r.cfi(policy.arm64RASigning); err != nil {
 				return nil, err
+			}
+			// libgcc's encoded-frame scanner skips a data byte for B while locating R.
+			// Move the zero-data marker last in the private image so all other
+			// fields retain their order, offsets and meaning for that provider.
+			if policy.canonicalizeBKey {
+				letters := b[augmentationOffset : augmentationOffset+zero]
+				if key := bytes.IndexByte(letters, 'B'); key >= 0 && key+1 < len(letters) {
+					copy(letters[key:], letters[key+1:])
+					letters[len(letters)-1] = 'B'
+				}
 			}
 			cies[offset] = cie
 		} else {

@@ -1043,6 +1043,11 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 	if err := im.prepareMSVCThreadInitializers(); err != nil {
 		return nil, err
 	}
+	if len(objs) != 0 && objs[0].info.Format == "ELF" {
+		if err := im.prepareELFUnwind(); err != nil {
+			return nil, err
+		}
+	}
 	native.ClearCache(b)
 	// Each section owns whole pages; never grant WRITE and EXEC together.
 	for _, o := range objs {
