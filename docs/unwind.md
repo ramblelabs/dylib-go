@@ -63,7 +63,8 @@ Go validates relocated `.eh_frame` records, preceding CIE references, encoded
 function ranges inside executable sections, augmentation boundaries, LEB128
 operands, and CFI operand storage before invoking a native unwinder. Accepted
 CIE augmentations are empty or start with `z`, followed by distinct `P`, `L`
-and/or `R` fields. `L` requires `P`. Go checks each augmentation's declared
+and/or `R` fields. ELF ARM64 additionally accepts the zero-data `B` marker.
+`L` requires `P`. Go checks each augmentation's declared
 length, consumes its fields exactly, and rejects unknown or repeated fields.
 Address fields can use native pointers or 4/8-byte fixed signed/unsigned values,
 absolute or PC-relative. Personality and LSDA pointers may additionally use
@@ -84,8 +85,16 @@ Linux ARM64 also accepts the operand-free
 libgcc unwinder interprets the signed return-address state. Native C backtraces
 and C++ catch/rethrow/destruction tests cover `-O0`/`-O2`, object/archive inputs,
 concurrent images, deregistration and calls during Session retirement with Go
-and llgo. This qualifies the compiler's A-key, stack-pointer signing form.
-B-key augmentation, `FEAT_PAuth_LR`, the newer set-state/with-PC instructions,
+and llgo. Both A-key and B-key stack-pointer signing are supported, including
+Clang `pac-ret+b-key`, signed leaf frames, and mixed A-key/B-key C++ call chains.
+The `B` CIE augmentation selects the B key without consuming augmentation data.
+Before making private frame sections read-only, Go moves that marker after the
+other letters. This preserves every field/relocation offset and avoids libgcc's
+incorrect data-byte skip when `B` precedes `R` or a personality. Registration
+validation stays read-only; staged object/archive bytes are unchanged. Native
+tests execute both compiler order and B-first records, reversed objects, lazy
+archives, exceptions, retirement and deregistration.
+`FEAT_PAuth_LR`, the newer set-state/with-PC instructions,
 Mach-O signed frames and arm64e remain unqualified. See the
 [AArch64 DWARF call-frame instructions](https://github.com/ARM-software/abi-aa/blob/main/aadwarf64/aadwarf64.rst#call-frame-instructions).
 

@@ -48,9 +48,16 @@ func TestARM64ReturnAddressSigningValidation(t *testing.T) {
 }
 
 func TestARM64ReturnAddressSigningCompilerRecords(t *testing.T) {
+	testARM64SigningCompilerRecords(t, "pac-ret", false)
+}
+
+func testARM64SigningCompilerRecords(t *testing.T, protection string, bFirst bool) {
 	for _, opt := range []string{"-O0", "-O2"} {
 		t.Run(opt, func(t *testing.T) {
-			path := compile(t, "testdata/unwind_frames.c", filepath.Join(t.TempDir(), "pac.o"), "--target=aarch64-linux-gnu", "-funwind-tables", "-mbranch-protection=pac-ret", opt)
+			path := compile(t, "testdata/unwind_frames.c", filepath.Join(t.TempDir(), "pac.o"), "--target=aarch64-linux-gnu", "-funwind-tables", "-mbranch-protection="+protection, opt)
+			if bFirst {
+				rewriteBKeyFrameFile(t, path)
+			}
 			data, err := readFile(path)
 			if err != nil {
 				t.Fatal(err)
@@ -89,14 +96,40 @@ func TestARM64ReturnAddressSigningCompilerRecords(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			staged := make(map[*section]string)
+			for _, s := range o.sections {
+				if s != nil {
+					staged[s] = string(s.data)
+				}
+			}
+			if err := im.prepareELFUnwind(); err != nil {
+				t.Fatal("signed-return frame preparation", err)
+			}
 			frames, err := im.elfFrameSections()
 			if err != nil || len(frames) != 1 {
 				t.Fatal("actual signed-return FDEs", frames, err)
 			}
 			for _, s := range o.sections {
 				if s != nil && s.name == ".eh_frame" {
+					if string(s.data) != staged[s] {
+						t.Fatal("frame normalization changed staged producer bytes")
+					}
+					if strings.Contains(protection, "b-key") {
+						count := 0
+						for _, augmentation := range bKeyCIEAugmentations(t, im.mem[s.offset:s.offset+s.size]) {
+							if strings.ContainsRune(string(augmentation), 'B') {
+								count++
+								if augmentation[len(augmentation)-1] != 'B' {
+									t.Fatal("B-key marker is not canonical", string(augmentation))
+								}
+							}
+						}
+						if count == 0 {
+							t.Fatal("compiler emitted no B-key CIE")
+						}
+					}
 					_, err := im.validateFrameRecords(im.mem[s.offset:s.offset+s.size], s.offset, framePolicy{language: true})
-					if err == nil || !strings.Contains(err.Error(), "return-address signing") {
+					if err == nil || protection == "pac-ret" && !strings.Contains(err.Error(), "return-address signing") {
 						t.Fatal("compiler did not emit parsed signing CFI", err)
 					}
 				}

@@ -18,6 +18,10 @@ func testNativeCXXExceptions(t *testing.T) {
 }
 
 func testNativeCXXExceptionsMode(t *testing.T, compact bool, extra ...string) {
+	testNativeCXXExceptionInputs(t, compact, nil, extra...)
+}
+
+func testNativeCXXExceptionInputs(t *testing.T, compact bool, edit func(*testing.T, string, []string), extra ...string) {
 	needNative(t)
 	cpp := os.Getenv("DYLIB_CXX")
 	if cpp == "" {
@@ -52,6 +56,9 @@ func testNativeCXXExceptionsMode(t *testing.T, compact bool, extra ...string) {
 			for _, kind := range []string{"throw", "catch"} {
 				path := filepath.Join(dir, kind+".o")
 				command(t, cpp, append(append([]string(nil), flags...), "-c", "testdata/unwind_cxx_"+kind+".cpp", "-o", path)...)
+				if edit != nil {
+					edit(t, path, flags)
+				}
 				objects = append(objects, path)
 			}
 			observer := New(Options{})

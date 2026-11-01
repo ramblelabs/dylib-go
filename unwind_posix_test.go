@@ -16,6 +16,10 @@ func TestNativePOSIXFrameRegistration(t *testing.T) {
 }
 
 func testNativePOSIXFrameRegistration(t *testing.T, extra ...string) {
+	testNativePOSIXFrameInputs(t, nil, extra...)
+}
+
+func testNativePOSIXFrameInputs(t *testing.T, edit func(*testing.T, string), extra ...string) {
 	needNative(t)
 	dir := t.TempDir()
 	name, flag := "unwind_host.so", "-shared"
@@ -36,6 +40,9 @@ func testNativePOSIXFrameRegistration(t *testing.T, extra ...string) {
 	args = append(args, extra...)
 	command(t, compiler(), args...)
 	obj := compile(t, "testdata/unwind_frames.c", filepath.Join(dir, "frames.o"), append([]string{"-funwind-tables"}, extra...)...)
+	if edit != nil {
+		edit(t, obj)
+	}
 	observer := New(Options{})
 	defer observer.Close()
 	load(t, observer, host)

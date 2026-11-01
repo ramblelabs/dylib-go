@@ -14,6 +14,15 @@ func (im *image) registerELFUnwind() error {
 }
 
 func (im *image) elfFrameSections() ([]uintptr, error) {
+	return im.elfFrames(false)
+}
+
+func (im *image) prepareELFUnwind() error {
+	_, err := im.elfFrames(true)
+	return err
+}
+
+func (im *image) elfFrames(canonicalizeBKey bool) ([]uintptr, error) {
 	var frames []uintptr
 	for _, o := range im.objects {
 		for _, s := range o.sections {
@@ -24,7 +33,7 @@ func (im *image) elfFrameSections() ([]uintptr, error) {
 				return nil, fmt.Errorf("%s: invalid ELF frame storage", o.info.Name)
 			}
 			b := im.mem[s.offset : s.offset+s.size]
-			fdes, err := im.validateFrameRecords(b, s.offset, framePolicy{language: true, arm64RASigning: o.info.Arch == "arm64"})
+			fdes, err := im.validateFrameRecords(b, s.offset, framePolicy{language: true, arm64RASigning: o.info.Arch == "arm64", canonicalizeBKey: canonicalizeBKey})
 			if err != nil {
 				return nil, fmt.Errorf("%s: %s: %w", o.info.Name, s.name, err)
 			}

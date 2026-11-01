@@ -189,6 +189,13 @@ both llgo execution modes. Portable tests relocate actual signed-return CFI,
 check its operand boundaries and reject use on other architectures; other
 pointer-authentication CFI remains unqualified.
 
+The ARM64 jobs also execute B-key and signed-leaf C frames, B-key C++
+exceptions and mixed A-key/B-key call chains. Tests retain compiler-emitted
+augmentation order or move the zero-data `B` marker first without shifting any
+field or relocation. Go normalizes the private image before read-only
+protection; portable tests check source immutability, idempotence, target
+gating, duplicate markers and augmentation bounds.
+
 Linux amd64/arm64 Go and llgo jobs also reserve an actual 4 GiB boundary,
 register native PC-relative 32-bit CIE/FDE records and query libgcc directly.
 They force the allocator to reject that candidate and retain ownership of
