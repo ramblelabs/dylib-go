@@ -140,6 +140,15 @@ func testNativeCXXExceptionsMode(t *testing.T, compact bool, extra ...string) {
 					owners[index] = New(Options{RegisterUnwind: true})
 					defer owners[index].Close()
 					load(t, owners[index], append([]string{host}, objects...)...)
+					if err := owners[index].Link("cxx_catch"); err != nil {
+						t.Fatal(err)
+					}
+					if runtime.GOOS == "linux" && runtime.GOARCH != "386" {
+						im := owners[index].image
+						if im.frameMappingPolicy() == nil || !gccFrameMappingSafe(uint64(im.base), uint64(len(im.mem))) {
+							t.Fatal("libgcc image spans a low-32-bit null PC")
+						}
+					}
 					call(t, owners[index], "cxx_catch", 20, 22, 42)
 				}
 				for _, owner := range owners[:9] {

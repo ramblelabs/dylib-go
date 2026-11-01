@@ -109,6 +109,21 @@ in its private mapping. This terminates libgcc's section scan even when the
 original section occupies a whole page. Registration uses `__register_frame`
 and `__deregister_frame` from one retained `libgcc_s.so.1` handle. It does not
 mix functions from different unwind runtimes or assume LLVM's per-FDE contract.
+
+For 64-bit Linux images with retained frame tables, allocation also avoids
+4 GiB boundaries. libgcc's discarded-function heuristic can ignore a valid
+32-bit encoded FDE when the decoded function address has zero low 32 bits.
+The complete image stays inside one address window, excluding its zero lower
+boundary. Allocation retries keep rejected mappings reserved so the OS cannot
+immediately return the same address; `Close` releases those mappings too,
+including retryable cleanup after allocation failure. Images without raw ELF
+frame registration keep their ordinary allocation policy.
+
+A native control registers real CIE/FDE bytes at an explicitly mapped 4 GiB
+boundary and one page above it, querying `_Unwind_Find_FDE` directly. The
+allocator regression forces that boundary as its first candidate. Portable
+range/ownership controls and native C++ multi-image/retirement tests cover the
+placement and cleanup behavior.
 The provider handle and frame sections remain alive through initialization,
 calls, and successful/failed cleanup. Sections are deregistered in reverse
 order before their image and provider are released. libgcc's void registration

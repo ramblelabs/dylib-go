@@ -189,6 +189,12 @@ both llgo execution modes. Portable tests relocate actual signed-return CFI,
 check its operand boundaries and reject use on other architectures; other
 pointer-authentication CFI remains unqualified.
 
+Linux amd64/arm64 Go and llgo jobs also reserve an actual 4 GiB boundary,
+register native PC-relative 32-bit CIE/FDE records and query libgcc directly.
+They force the allocator to reject that candidate and retain ownership of
+unused mappings. Portable checks cover boundary crossings, bounded retries,
+allocation failure and cleanup retry; C++ image tests verify safe placement.
+
 macOS amd64/arm64 Go and llgo jobs execute optional per-FDE DWARF registration with system libunwind, real object/archive stack traversal, before/after-close FDE lookup, validation retry and failed initialization cleanup. Pure Go jobs inspect real `__eh_frame` compiler output and verify explicit ARM64 pairs and implicit x86-64 address rebasing.
 
 CI pins merged llgo `main` commit `5926054cd0ae0e5a621557288e79d2c28bdb5fa2`, which includes the
