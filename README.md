@@ -852,6 +852,11 @@ an explicit namespace, including named child namespaces, public nested types,
 template-specialization aliases and lambda aliases. Compiler checks filter out
 incomplete and non-class types. See [namespace discovery and its bounds](docs/cxx.md#namespace-class-discovery).
 
+Explicit member manifests also support all twelve receiver cv/ref combinations
+through `Method.Const`, `Method.Volatile` and `Method.Ref`, including native
+qualified virtual dispatch. Rvalue calls preserve caller ownership; see the
+[executed receiver selections](examples/cxx/receivers.go) and [lifetime contract](docs/cxx.md#receiver-cvref-qualifiers).
+
 ## Native Swift calls with ABIBridge
 
 The optional [ABIBridge adapter](docs/abibridge.md) calls synchronous thin Swift functions on macOS amd64/arm64 through a separately built native facade. Go and llgo support fixed-width scalars, native pointers, explicitly described trivial Swift storage and formally indirect values without the Go `libffi` tag. Owned Swift values use complete metadata and copy/destroy witnesses. `InvokeManaged` borrows guaranteed arguments and owns returned values using explicit passing layouts. Generic calls, async/throws and device ABIs remain outside this adapter.
@@ -982,7 +987,7 @@ Dynamic `Bind` defaults to the host C ABI (`FFI_DEFAULT_ABI`), with explicit cde
 | C with other conventions | Other non-default ABIs | Not implemented | Use a compiled adapter matching the convention |
 | C++ C exports | `extern "C"`, host C ABI | Verified subset | C exports and global construction/destruction on native targets; ordinary raw fixtures disable exceptions and RTTI; Linux amd64/arm64/386 and macOS amd64/arm64 execute native throw/catch/rethrow and RAII with explicit compatible runtimes and `RegisterUnwind`; macOS accepts the implemented DWARF/compact tables |
 | C++ free functions | C-compatible representation, exact mangled symbol | Conditional | Caller supplies the exact symbol and signature; Windows 386 DLL/import fixtures test primitive `int32` free functions by exact MSVC mangled names and through compiled C++ callers; class values and exceptions need a compiled adapter |
-| C++ class facades | Generated C exports + matching C++17 compiler | Supported subset | Explicit `compiler/cxx` manifests: constructors, ordinary/const/static members, public multiple/virtual base views, native virtual dispatch, class values/references, named native pointees, native function pointers, named lambda/`std::function` calls and captured Go callbacks, owned results and exception status codes; complete libraries |
+| C++ class facades | Generated C exports + matching C++17 compiler | Supported subset | Explicit `compiler/cxx` manifests: constructors, static members and all receiver cv/ref combinations, public multiple/virtual base views, native virtual dispatch, class values/references, named native pointees, native function pointers, named lambda/`std::function` calls and captured Go callbacks, owned results and exception status codes; complete libraries |
 | Direct C++ ABI calls | Compiler-specific C++ object ABI | Adapter required | Generated C++ facades handle selected object calls; there is no Go-side class layout, vtable or member-pointer interpreter |
 | Rust C exports | `extern "C"` | Verified subset | Linux/macOS amd64 and arm64; `no_std` leaf objects, `panic=abort` |
 | Rust with explicit amd64 conventions | `extern "win64"` / `extern "sysv64"` | Verified subset | Linux/macOS amd64; `no_std`, `repr(C)` records, fixed scalar/pointer/struct calls and callbacks at O0/O2 from objects, archives and OS libraries |

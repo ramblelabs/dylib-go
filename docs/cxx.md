@@ -255,6 +255,29 @@ entries and C++ captures; freshly generated cgo/direct llgo callers execute thos
 native cases without libffi. Standard-library callables require the native C++
 SDK/runtime matching their producer.
 
+## Receiver cv/ref qualifiers
+
+`Method.Const` and `Method.Volatile` select the exact receiver cv-qualification.
+`Method.Ref` accepts `RefNone` (the default), `RefLValue` for `&`, or `RefRValue`
+for `&&`. All twelve cv/ref combinations use an exact native member-pointer
+type, including named `operator()` selections. Static methods cannot have
+receiver qualifiers. The native compiler rejects missing or mismatched overloads.
+
+An `&&` facade casts the existing receiver to the corresponding cv-qualified
+xvalue before its member-pointer call. This preserves native virtual dispatch,
+including through a borrowed secondary base. The handle stays owned by the
+caller: `&&` does not itself destroy an object or specify its post-call state.
+An operation may move data out, mutate the object or throw according to its
+native contract. Keep the object and provider alive, observe that contract and
+eventually destroy the owned object. `volatile` preserves native volatile
+accesses; it does not add thread synchronization.
+
+The [executed receiver manifest](../examples/cxx/receivers.go) selects the twelve
+overloads, a volatile rvalue call operator, void mutation, a qualified virtual
+base call and a noncopyable owned result. Generated cgo/direct llgo callers and
+dynamic libffi callers exercise `-O0`/`-O2` libraries, output clearing on errors,
+exception translation, post-move receiver state and explicit destruction.
+
 ## Namespace class discovery
 
 `DiscoverClasses(ctx, header, namespace, DiscoveryOptions)` lists accessible
@@ -305,8 +328,8 @@ including qualifiers and calling convention attributes. Parameters retain names,
 native types and default-argument presence. Deleted declarations are reported for
 diagnostics; they cannot be invoked. `Defaulted`, `Static`, `Variadic` and class
 `Abstract` metadata describe declarations without promising callable bindings.
-Ref-qualified members, conversions and variadics still require adapters beyond
-the current generator. Type spellings are not Go signatures, canonical qualified
+Conversions and variadics still require adapters beyond the current generator.
+Type spellings are not Go signatures, canonical qualified
 names, independently resolvable aliases or ownership contracts.
 
 The [executed selection example](../examples/cxx/members.go) chooses one scalar
@@ -363,7 +386,7 @@ abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
 Unrestricted whole-header declaration discovery,
-ref-qualified/volatile members, variadics, inheritance discovery beyond selected types,
+conversion operators, variadics, inheritance discovery beyond selected types,
 downcasts/crosscasts and C++ header discovery remain outside this manifest. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately
 qualified Linux/macOS subset; see [unwind scope](unwind.md). The generator

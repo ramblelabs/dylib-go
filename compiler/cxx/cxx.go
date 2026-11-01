@@ -28,10 +28,23 @@ type Constructor struct {
 	FunctionArgs []FunctionArg
 }
 
+// RefQualifier selects the implicit object's C++ value category.
+type RefQualifier uint8
+
+const (
+	RefNone   RefQualifier = iota // No ref-qualifier; invoke on the existing lvalue.
+	RefLValue                     // An exact &-qualified member.
+	RefRValue                     // An exact &&-qualified member; does not consume the handle.
+)
+
 // Method selects an exact C++ member signature. Name accepts an identifier or
 // "operator()" for named callable types; the latter cannot be Static in C++17. Const
-// selects a const-qualified member; Static omits the receiver. A non-void result
-// adds an output pointer after the arguments. ObjectArgs/ObjectResult replace
+// and Volatile select receiver cv-qualifiers; Ref selects an exact ref-qualifier.
+// RefRValue invokes the existing object as an xvalue without deleting or clearing
+// its handle. The native method defines its post-call state; the caller retains
+// ownership and must eventually destroy it. Static omits the receiver and cannot
+// have cv/ref qualifiers. A non-void result adds an output pointer after the
+// arguments. ObjectArgs/ObjectResult replace
 // pointer transports with named native types. Value results require an initially
 // null output slot and a noexcept destructor, and allocate a new owned object.
 // Pointer/reference results borrow the native API's lifetime. FunctionArgs and
@@ -43,6 +56,8 @@ type Method struct {
 	Name, Symbol   string
 	Signature      abi.Signature
 	Const, Static  bool
+	Volatile       bool
+	Ref            RefQualifier
 	ObjectArgs     []ObjectArg
 	ObjectResult   *ObjectType
 	FunctionArgs   []FunctionArg
@@ -154,8 +169,8 @@ return DYLIB_CXX_SUCCESS;
 		}
 		for _, method := range class.Methods {
 			callOperator := method.Name == "operator()"
-			if (!identifier(method.Name) && !callOperator) || method.Static && (method.Const || callOperator) {
-				return nil, fmt.Errorf("cxx: invalid method %q or static/const combination", method.Name)
+			if (!identifier(method.Name) && !callOperator) || method.Ref > RefRValue || method.Static && (method.Const || method.Volatile || method.Ref != RefNone || callOperator) {
+				return nil, fmt.Errorf("cxx: invalid method %q or static/cv/ref combination", method.Name)
 			}
 			if err := methodSignature(method.Signature); err != nil {
 				return nil, fmt.Errorf("cxx: method %s: %w", method.Name, err)
@@ -215,12 +230,26 @@ return DYLIB_CXX_SUCCESS;
 				if method.Const {
 					qualifier = " const"
 				}
+				if method.Volatile {
+					qualifier += " volatile"
+				}
+				if method.Ref == RefLValue {
+					qualifier += " &"
+				} else if method.Ref == RefRValue {
+					qualifier += " &&"
+				}
 				fmt.Fprintf(&body, "using entry_type = %s (%s::*)(%s)%s;\n", nativeResult, class.Name, types, qualifier)
 				receiver := class.Name
 				if method.Const {
 					receiver = "const " + receiver
 				}
+				if method.Volatile {
+					receiver = "volatile " + receiver
+				}
 				call = "(static_cast<" + receiver + " *>(handle)->*entry)(" + args + ")"
+				if method.Ref == RefRValue {
+					call = "(static_cast<" + receiver + " &&>(*static_cast<" + receiver + " *>(handle)).*entry)(" + args + ")"
+				}
 			}
 			fmt.Fprintf(&body, "auto entry = static_cast<entry_type>(&%s::%s);\n", class.Name, method.Name)
 			switch object := method.ObjectResult; {
