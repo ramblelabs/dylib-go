@@ -754,6 +754,7 @@ func (s *Session) releaseCall() {
 
 type image struct {
 	mem                                    []byte
+	reservedMemory                         [][]byte // Unused mappings retained through allocation retry/cleanup.
 	base                                   uintptr
 	objects                                []*object
 	defs                                   map[string]definition
@@ -939,8 +940,12 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 	if size > maxImage {
 		return nil, fmt.Errorf("image exceeds 64 MiB")
 	}
-	b, e := native.Alloc(int(size))
+	b, reserved, e := reserveImageMemory(int(size), native.Alloc, im.frameMappingPolicy())
+	im.reservedMemory = reserved
 	if e != nil {
+		if cleanup := im.freeReservedMemory(native.Free); cleanup != nil {
+			return im, errors.Join(e, cleanup)
+		}
 		return nil, e
 	}
 	im.mem = b
@@ -1071,7 +1076,7 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 }
 func (im *image) close() error {
 	if im.mem == nil {
-		return nil
+		return im.freeReservedMemory(native.Free)
 	}
 	if im.emulatedTLS != nil || im.coffTLS != nil {
 		// Native finalizers may create TLS and register more thread callbacks.
@@ -1128,7 +1133,7 @@ func (im *image) close() error {
 	im.initializers, im.finalizers = nil, nil
 	im.threadInitializers = nil
 	im.cInitializers = nil
-	return nil
+	return im.freeReservedMemory(native.Free)
 }
 func (im *image) lookup(n string) (uintptr, error) {
 	if len(im.objects) != 0 && elfOwnedGOT(im.objects[0].info, n) {

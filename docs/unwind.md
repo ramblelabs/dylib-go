@@ -78,6 +78,17 @@ variants, value-offset and GNU argument-size instructions. Expressions,
 `set_loc` and target-specific instructions remain
 unsupported. Structural validation does not verify CFI against machine code.
 
+Linux ARM64 also accepts the operand-free
+`DW_CFA_AARCH64_negate_ra_state` instruction emitted by Clang's
+`-mbranch-protection=pac-ret`. Go validates the CFI boundaries; the retained
+libgcc unwinder interprets the signed return-address state. Native C backtraces
+and C++ catch/rethrow/destruction tests cover `-O0`/`-O2`, object/archive inputs,
+concurrent images, deregistration and calls during Session retirement with Go
+and llgo. This qualifies the compiler's A-key, stack-pointer signing form.
+B-key augmentation, `FEAT_PAuth_LR`, the newer set-state/with-PC instructions,
+Mach-O signed frames and arm64e remain unqualified. See the
+[AArch64 DWARF call-frame instructions](https://github.com/ARM-software/abi-aa/blob/main/aadwarf64/aadwarf64.rst#call-frame-instructions).
+
 With `RegisterUnwind` enabled, the linker retains read-only
 `.gcc_except_table`/`.gcc_except_table.*` sections and their relocation
 dependencies. Non-null FDE LSDA pointers must reference these backed,
@@ -98,6 +109,21 @@ in its private mapping. This terminates libgcc's section scan even when the
 original section occupies a whole page. Registration uses `__register_frame`
 and `__deregister_frame` from one retained `libgcc_s.so.1` handle. It does not
 mix functions from different unwind runtimes or assume LLVM's per-FDE contract.
+
+For 64-bit Linux images with retained frame tables, allocation also avoids
+4 GiB boundaries. libgcc's discarded-function heuristic can ignore a valid
+32-bit encoded FDE when the decoded function address has zero low 32 bits.
+The complete image stays inside one address window, excluding its zero lower
+boundary. Allocation retries keep rejected mappings reserved so the OS cannot
+immediately return the same address; `Close` releases those mappings too,
+including retryable cleanup after allocation failure. Images without raw ELF
+frame registration keep their ordinary allocation policy.
+
+A native control registers real CIE/FDE bytes at an explicitly mapped 4 GiB
+boundary and one page above it, querying `_Unwind_Find_FDE` directly. The
+allocator regression forces that boundary as its first candidate. Portable
+range/ownership controls and native C++ multi-image/retirement tests cover the
+placement and cleanup behavior.
 The provider handle and frame sections remain alive through initialization,
 calls, and successful/failed cleanup. Sections are deregistered in reverse
 order before their image and provider are released. libgcc's void registration

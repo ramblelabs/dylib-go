@@ -106,7 +106,9 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Linux amd64/arm64/386 libgcc C++ personality/LSDA, native throw/catch/rethrow, RAII, COMDAT FDE pruning, retirement and object/archive retry tests.
 - [x] macOS amd64/arm64 C++ DWARF personality/LSDA with system libunwind, explicit/implicit LSDA rebasing, native exception calls, native header/callback/cache ownership, registry-failure retry and retirement.
 - [x] macOS amd64/arm64 compact unwind records, read-only native relative tables/header, frame/frameless/large-stack C++ execution, weak-copy exclusion and mixed DWARF fallback.
-- [ ] Windows language handlers and newer unwind versions, additional Mach-O forms and additional POSIX unwind providers.
+- [x] ELF ARM64 A-key/SP signed-return CFI from Clang `pac-ret`, with target-gated operand validation and native Go/llgo C backtraces, C++ exceptions, retirement and deregistration at `-O0`/`-O2`.
+- [x] Linux 64-bit ELF unwind image placement outside low-32-bit-null PC boundaries, bounded mapping retries with retained cleanup ownership, independent libgcc lookup controls and native multi-image C++ execution.
+- [ ] Windows language handlers and newer unwind versions, additional Mach-O forms, further pointer-authentication CFI and additional POSIX unwind providers.
 - [x] Retried session cleanup retaining image/library ownership and provider leases after native failures, concurrent error propagation, one-time finalizers and native TLS lifetime tests.
 - [x] Unpublished-image rollback preserving primary and cleanup errors, retained native resources/provider leases and closed-session handoff; successful rollback retains dependency/link retry behavior.
 - [x] Concurrent Symbol/Function/CallPlan calls and reentrant callbacks, with retirement before cleanup and no invocation lock across native calls.

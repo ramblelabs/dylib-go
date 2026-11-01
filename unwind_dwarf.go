@@ -44,6 +44,8 @@ type framePolicy struct {
 	lsdaFixup  func(uint64, byte) error
 	record     func(start, length uint64, fde uintptr, personality bool) error
 
+	arm64RASigning bool // ELF A-key return-address signing; native unwinder interprets state.
+
 	personalityFixup func(uint64, byte) error
 }
 
@@ -170,7 +172,7 @@ func (im *image) validateFrameRecords(b []byte, imageOffset uint64, policy frame
 			if policy.pcRelative && cie.encoding&0x70 != 0x10 {
 				return nil, fmt.Errorf("macOS FDEs require PC-relative addressing")
 			}
-			if err := r.cfi(); err != nil {
+			if err := r.cfi(policy.arm64RASigning); err != nil {
 				return nil, err
 			}
 			cies[offset] = cie
@@ -223,7 +225,7 @@ func (im *image) validateFrameRecords(b []byte, imageOffset uint64, policy frame
 					return nil, fmt.Errorf("unused FDE augmentation data")
 				}
 			}
-			if err := r.cfi(); err != nil {
+			if err := r.cfi(policy.arm64RASigning); err != nil {
 				return nil, err
 			}
 			if policy.record != nil {
@@ -311,7 +313,7 @@ func (r *frameReader) encoded(encoding byte, pointerSize uint64) (int64, error) 
 
 // Check operand boundaries before handing CFI to libgcc. Native code and its
 // CFI remain trusted; validation is not a proof of the machine-code prolog.
-func (r *frameReader) cfi() error {
+func (r *frameReader) cfi(arm64RASigning bool) error {
 	depth := 0
 	for len(r.b) != 0 {
 		op, _ := r.byte()
@@ -348,6 +350,11 @@ func (r *frameReader) cfi() error {
 				unsigned, signed = 1, 1
 			case 19:
 				signed = 1
+			case 0x2d: // DW_CFA_AARCH64_negate_ra_state has no operands.
+				if !arm64RASigning {
+					return fmt.Errorf("AArch64 return-address signing requires ELF ARM64 frames")
+				}
+				continue
 			default:
 				return fmt.Errorf("unsupported CFI opcode %#x", op)
 			}
