@@ -41,7 +41,7 @@ Keep the parser and linker in Go and extend llgo or small native adapters when l
 
 Each implementation PR must pass its native Go and llgo CI jobs before merge. Dependent work can be prepared on a branch and rebased onto the qualified result. A checked item describes implemented behavior with tests, not universal toolchain compatibility.
 
-- [x] Concrete C++ variadic static/member/call-operator/virtual calls through fixed C exports, with scalar promotions, register overflow, native pointer/function tails and Go/llgo execution.
+- [x] Concrete C++ variadic static/member/call-operator/virtual calls through fixed C exports, with scalar promotions, register overflow, fixed/variadic native function-pointer arguments/results and Go/llgo execution.
 - [x] Explicit fixed amd64 Microsoft x64/System V selection: dynamic Win64 on three amd64 hosts, dynamic SysV on Linux/macOS amd64, generated C bridges on all three, ordinary struct/indirect results, native pointers and callback reentry.
 - [x] Explicit fixed Windows 386 thiscall: receiver pointers, mixed scalar/struct arguments, dynamic scalar/pointer/void calls and callbacks, native function-pointer metadata, generated C bridges with hidden struct results, and MSVC/GNU native execution fixtures.
 - [x] Fixed-length array members and pointees, including nested arrays/records and callbacks.
