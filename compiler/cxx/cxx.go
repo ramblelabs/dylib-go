@@ -50,8 +50,11 @@ const (
 // Pointer/reference results borrow the native API's lifetime. FunctionArgs and
 // FunctionResult select exact fixed native function pointers using opaque address
 // transports. A FunctionResult is borrowed and cannot also be an ObjectResult;
-// keep its provider alive while using it. Variadics and
-// ordinary aggregate transports remain unsupported.
+// keep its provider alive while using it. Signature.Variadic selects a native
+// ellipsis: FixedArgs counts the native fixed prefix (excluding the receiver),
+// and Args also contains one concrete scalar/pointer tail. The C facade stays
+// fixed, and the native compiler applies default argument promotions. ObjectArgs
+// in the tail must be ObjectPointer. Ordinary aggregate transports are unsupported.
 // Conversion selects a non-void conversion operator to the exact native result
 // type. Name must be empty, Signature.Args empty, and Static false. Explicit
 // conversion operators are supported; ABI, ownership and receiver qualifiers
@@ -187,6 +190,15 @@ return DYLIB_CXX_SUCCESS;
 			if err != nil {
 				return nil, fmt.Errorf("cxx: method %s: %w", method.Name, err)
 			}
+			if method.Signature.Variadic {
+				for _, object := range method.ObjectArgs {
+					if object.Index >= method.Signature.FixedArgs && object.Type.Kind != ObjectPointer {
+						return nil, fmt.Errorf("cxx: method %s: variadic object arguments require pointer transport", method.Name)
+					}
+				}
+				types = append(types[:method.Signature.FixedArgs], "...")
+			}
+			prototype := strings.Join(types, ", ")
 			var body bytes.Buffer
 			if !method.Static {
 				parameters = append([]string{"void *handle"}, parameters...)
@@ -232,7 +244,7 @@ return DYLIB_CXX_SUCCESS;
 			fmt.Fprint(&body, checks, "try {\n")
 			call := "entry(" + args + ")"
 			if method.Static {
-				fmt.Fprintf(&body, "using entry_type = %s (*)(%s);\n", nativeResult, types)
+				fmt.Fprintf(&body, "using entry_type = %s (*)(%s);\n", nativeResult, prototype)
 			} else {
 				qualifier := ""
 				if method.Const {
@@ -246,7 +258,7 @@ return DYLIB_CXX_SUCCESS;
 				} else if method.Ref == RefRValue {
 					qualifier += " &&"
 				}
-				fmt.Fprintf(&body, "using entry_type = %s (%s::*)(%s)%s;\n", nativeResult, class.Name, types, qualifier)
+				fmt.Fprintf(&body, "using entry_type = %s (%s::*)(%s)%s;\n", nativeResult, class.Name, prototype, qualifier)
 				receiver := cvQualified(class.Name, method.Const, method.Volatile)
 				call = "(static_cast<" + receiver + " *>(handle)->*entry)(" + args + ")"
 				if method.Ref == RefRValue {
@@ -333,8 +345,8 @@ func methodSignature(s abi.Signature) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
-	if s.Variadic || s.Convention != abi.Default && s.Convention != abi.CDecl {
-		return fmt.Errorf("expected a fixed default/cdecl signature")
+	if s.Convention != abi.Default && s.Convention != abi.CDecl {
+		return fmt.Errorf("expected a default/cdecl signature")
 	}
 	for _, d := range append(append([]abi.TypeDesc(nil), s.ArgTypes...), s.ReturnType()) {
 		if d.Elem != nil {

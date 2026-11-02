@@ -72,7 +72,7 @@ func valueDestructor(name, alias string) string {
 	return fmt.Sprintf("using %s = %s;\nstatic_assert(noexcept(static_cast<%s *>(nullptr)->~%s()), \"class values require noexcept destruction\");\n", alias, name, alias, alias)
 }
 
-func nativeArguments(args []abi.Type, objects []ObjectArg, functions []FunctionArg) (parameters []string, types, values, checks string, err error) {
+func nativeArguments(args []abi.Type, objects []ObjectArg, functions []FunctionArg) (parameters, types []string, values, checks string, err error) {
 	parameters, _, _, err = arguments(args)
 	if err != nil {
 		return
@@ -125,6 +125,6 @@ func nativeArguments(args []abi.Type, objects []ObjectArg, functions []FunctionA
 		kinds[i] = alias
 		names[i] = fmt.Sprintf("reinterpret_cast<%s>(p%d)", alias, i)
 	}
-	types, values, checks = strings.Join(kinds, ", "), strings.Join(names, ", "), validation.String()
+	types, values, checks = kinds, strings.Join(names, ", "), validation.String()
 	return
 }

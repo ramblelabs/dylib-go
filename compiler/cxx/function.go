@@ -18,6 +18,9 @@ type FunctionArg struct {
 }
 
 func functionAlias(signature abi.Signature, alias string) (string, error) {
+	if signature.Variadic {
+		return "", fmt.Errorf("native function pointer: expected a fixed signature")
+	}
 	if err := methodSignature(signature); err != nil {
 		return "", fmt.Errorf("native function pointer: %w", err)
 	}
