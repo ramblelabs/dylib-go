@@ -863,6 +863,12 @@ rvalue-reference results through opaque addresses. `ObjectType.Const` and
 [executed move manifest](examples/cxx/moves.go) covers noncopyable construction,
 post-move source state, native scalar/array references and explicit destruction.
 
+`Method.Signature.Variadic` selects a native ellipsis with an explicit fixed prefix
+and concrete scalar/pointer tail. The [executed variadic manifest](examples/cxx/variadics.go)
+uses fixed C exports, with default promotions performed by the native compiler.
+Static, cv/ref-qualified and virtual members are covered; class-value tails and
+variadic callbacks remain unsupported. See [variadic member calls](docs/cxx.md#concrete-variadic-member-calls).
+
 `Method.Conversion` explicitly selects a native conversion operator by its result
 transport, including borrowed references, owned class values and native function
 pointers. The [executed conversion manifest](examples/cxx/conversions.go) verifies
@@ -999,7 +1005,7 @@ Dynamic `Bind` defaults to the host C ABI (`FFI_DEFAULT_ABI`), with explicit cde
 | C with other conventions | Other non-default ABIs | Not implemented | Use a compiled adapter matching the convention |
 | C++ C exports | `extern "C"`, host C ABI | Verified subset | C exports and global construction/destruction on native targets; ordinary raw fixtures disable exceptions and RTTI; Linux amd64/arm64/386 and macOS amd64/arm64 execute native throw/catch/rethrow and RAII with explicit compatible runtimes and `RegisterUnwind`; macOS accepts the implemented DWARF/compact tables |
 | C++ free functions | C-compatible representation, exact mangled symbol | Conditional | Caller supplies the exact symbol and signature; Windows 386 DLL/import fixtures test primitive `int32` free functions by exact MSVC mangled names and through compiled C++ callers; class values and exceptions need a compiled adapter |
-| C++ class facades | Generated C exports + matching C++17 compiler | Supported subset | Explicit `compiler/cxx` manifests: constructors, static members and all receiver cv/ref combinations, public multiple/virtual base views, native virtual dispatch, class values/references, named native pointees, native function pointers, named lambda/`std::function` calls and captured Go callbacks, owned results and exception status codes; complete libraries |
+| C++ class facades | Generated C exports + matching C++17 compiler | Supported subset | Explicit `compiler/cxx` manifests: constructors, concrete variadic calls, static members and all receiver cv/ref combinations, public multiple/virtual base views, native virtual dispatch, class values/references, named native pointees, native function pointers, named lambda/`std::function` calls and captured Go callbacks, owned results and exception status codes; complete libraries |
 | Direct C++ ABI calls | Compiler-specific C++ object ABI | Adapter required | Generated C++ facades handle selected object calls; there is no Go-side class layout, vtable or member-pointer interpreter |
 | Rust C exports | `extern "C"` | Verified subset | Linux/macOS amd64 and arm64; `no_std` leaf objects, `panic=abort` |
 | Rust with explicit amd64 conventions | `extern "win64"` / `extern "sysv64"` | Verified subset | Linux/macOS amd64; `no_std`, `repr(C)` records, fixed scalar/pointer/struct calls and callbacks at O0/O2 from objects, archives and OS libraries |

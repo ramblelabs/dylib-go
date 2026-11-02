@@ -297,6 +297,35 @@ base call and a noncopyable owned result. Generated cgo/direct llgo callers and
 dynamic libffi callers exercise `-O0`/`-O2` libraries, output clearing on errors,
 exception translation, post-move receiver state and explicit destruction.
 
+## Concrete variadic member calls
+
+Set `Method.Signature.Variadic` and `FixedArgs` to select a native ellipsis
+prototype. `Signature.Args` contains the fixed prefix followed by one concrete
+scalar/pointer tail. `FixedArgs` excludes the receiver and must be at least one;
+it may equal the argument count for an empty tail. Generate a separate export for
+each concrete call shape.
+
+The generated C export remains fixed, including all tail arguments and the final
+result slot. The exact native member/function pointer contains only the fixed
+prefix and `...`. The C++ compiler performs [default argument
+promotions](https://eel.is/c++draft/expr.call): small integers and bool become
+`int`, and float becomes double. The caller must match the native function's
+expected count and promoted types; the facade cannot inspect a `va_list` contract.
+
+The [executed manifest](../examples/cxx/variadics.go) covers static, cv/ref-qualified,
+call-operator and virtual calls through a secondary base. Tests execute empty tails,
+integer/floating register overflow, mixed 32/64-bit widths, native object and fixed
+function-pointer arguments, borrowed pointer results, void results, exceptions,
+nulls and owner destruction. Generated cgo and direct llgo callers need no libffi;
+optional dynamic callers bind the same fixed C exports.
+
+Named object references/values remain available in the fixed prefix. Object
+arguments in the tail must use `ObjectPointer`; class values and references are
+rejected because passing nontrivial objects through ellipsis is not a portable
+contract. Native function-pointer descriptors remain fixed signatures. Variadic
+constructors and zero-fixed-prefix ellipsis signatures are not selected by this
+manifest. Go variadic callbacks are still unsupported.
+
 ## Explicit conversion operators
 
 `Method.Conversion` selects a non-void conversion operator to the exact native
@@ -373,7 +402,8 @@ including qualifiers and calling convention attributes. Parameters retain names,
 native types and default-argument presence. Deleted declarations are reported for
 diagnostics; they cannot be invoked. `Defaulted`, `Static`, `Variadic` and class
 `Abstract` metadata describe declarations without promising callable bindings.
-Variadics still require adapters beyond the current generator.
+Variadic declarations require an explicit concrete tail in the facade manifest;
+discovery does not infer that tail.
 Type spellings are not Go signatures, canonical qualified
 names, independently resolvable aliases or ownership contracts.
 
@@ -431,7 +461,7 @@ abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
 Unrestricted whole-header declaration discovery,
-variadics, inheritance discovery beyond selected types,
+variadic constructors and class-value tails, inheritance discovery beyond selected types,
 downcasts/crosscasts and C++ header discovery remain outside this manifest. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately
 qualified Linux/macOS subset; see [unwind scope](unwind.md). The generator
