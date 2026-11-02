@@ -297,6 +297,32 @@ base call and a noncopyable owned result. Generated cgo/direct llgo callers and
 dynamic libffi callers exercise `-O0`/`-O2` libraries, output clearing on errors,
 exception translation, post-move receiver state and explicit destruction.
 
+## Explicit conversion operators
+
+`Method.Conversion` selects a non-void conversion operator to the exact native
+result described by `Signature.Result`, `ObjectResult` or `FunctionResult`.
+Leave `Name` empty, supply no arguments and keep `Static` false. `Const`,
+`Volatile` and `Ref` select receiver qualifiers as for ordinary members.
+Explicit operators participate because the facade directly invokes a selected
+member pointer. The native compiler checks the result type, qualifiers and access.
+
+Selection uses `operator` followed by the validated native result type, rather
+than applying an ordinary cast to the receiver. A conversion to one integer or
+floating type cannot silently satisfy a descriptor for another type through a
+standard conversion chain. The existing scalar/native-address transport limits
+and named object/function-pointer result contracts still apply. This does not
+infer an ABI, ownership or a conversion target from native type spellings.
+
+The [executed conversion manifest](../examples/cxx/conversions.go) covers bool,
+fixed-width integer, floating, native pointer and function-pointer results,
+borrowed lvalue/rvalue references, and a noncopyable owned class result. A native
+virtual conversion is also called through a secondary base. Pointer/reference
+results remain borrowed; value results require a separate destruction operation.
+An rvalue receiver can be moved from according to its native operation; its
+original handle remains caller-owned. Existing exception, null, output clearing
+and occupied-slot rules apply. Native cgo/direct llgo and dynamic libffi tests
+execute `-O0`/`-O2` libraries and verify ownership counts after destruction.
+
 ## Namespace class discovery
 
 `DiscoverClasses(ctx, header, namespace, DiscoveryOptions)` lists accessible
@@ -347,7 +373,7 @@ including qualifiers and calling convention attributes. Parameters retain names,
 native types and default-argument presence. Deleted declarations are reported for
 diagnostics; they cannot be invoked. `Defaulted`, `Static`, `Variadic` and class
 `Abstract` metadata describe declarations without promising callable bindings.
-Conversions and variadics still require adapters beyond the current generator.
+Variadics still require adapters beyond the current generator.
 Type spellings are not Go signatures, canonical qualified
 names, independently resolvable aliases or ownership contracts.
 
@@ -405,7 +431,7 @@ abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
 Unrestricted whole-header declaration discovery,
-conversion operators, variadics, inheritance discovery beyond selected types,
+variadics, inheritance discovery beyond selected types,
 downcasts/crosscasts and C++ header discovery remain outside this manifest. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately
 qualified Linux/macOS subset; see [unwind scope](unwind.md). The generator
