@@ -7,8 +7,10 @@ import (
 )
 
 // FunctionArg replaces a zero-based abi.Pointer argument with an exact native
-// function pointer. Signatures accept fixed scalar/opaque-pointer default/cdecl
-// calls, including void results. Null entries are passed through to the API.
+// function pointer. Signatures accept scalar/opaque-pointer default/cdecl calls,
+// including void results. A Variadic signature contains only its fixed prefix:
+// len(Args) must equal FixedArgs. Concrete tails belong to each native call,
+// not the pointer's type. Null entries are passed through to the API.
 // Addresses must belong to native functions or leased C callback entries; Go
 // function values are not native entries. Retained entries need explicit leases
 // and native unregister/join before release, for example using a Registration.
@@ -18,13 +20,16 @@ type FunctionArg struct {
 }
 
 func functionAlias(signature abi.Signature, alias string) (string, error) {
-	if signature.Variadic {
-		return "", fmt.Errorf("native function pointer: expected a fixed signature")
-	}
 	if err := methodSignature(signature); err != nil {
 		return "", fmt.Errorf("native function pointer: %w", err)
 	}
+	if signature.Variadic && len(signature.Args) != signature.FixedArgs {
+		return "", fmt.Errorf("native variadic function pointer: describe only the fixed prefix")
+	}
 	_, args, _, _ := arguments(signature.Args)
+	if signature.Variadic {
+		args += ", ..."
+	}
 	result, _ := cType(signature.Result)
 	// The qualified producer targets support conversions between opaque address
 	// transports and function pointers. Spell cdecl explicitly on Windows so the

@@ -48,7 +48,7 @@ const (
 // pointer transports with named native types. Value results require an initially
 // null output slot and a noexcept destructor, and allocate a new owned object.
 // Pointer/reference results borrow the native API's lifetime. FunctionArgs and
-// FunctionResult select exact fixed native function pointers using opaque address
+// FunctionResult select exact native function pointers using opaque address
 // transports. A FunctionResult is borrowed and cannot also be an ObjectResult;
 // keep its provider alive while using it. Signature.Variadic selects a native
 // ellipsis: FixedArgs counts the native fixed prefix (excluding the receiver),

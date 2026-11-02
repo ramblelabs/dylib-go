@@ -867,7 +867,9 @@ post-move source state, native scalar/array references and explicit destruction.
 and concrete scalar/pointer tail. The [executed variadic manifest](examples/cxx/variadics.go)
 uses fixed C exports, with default promotions performed by the native compiler.
 Static, cv/ref-qualified and virtual members are covered; class-value tails and
-variadic callbacks remain unsupported. See [variadic member calls](docs/cxx.md#concrete-variadic-member-calls).
+variadic callbacks remain unsupported. Native variadic function-pointer parameters
+and results use prefix-only descriptors; see the [executed function-pointer manifest](examples/cxx/variadic_functions.go)
+and [variadic member calls](docs/cxx.md#concrete-variadic-member-calls).
 
 `Method.Conversion` explicitly selects a native conversion operator by its result
 transport, including borrowed references, owned class values and native function

@@ -36,7 +36,7 @@ type names, as described below.
 | `Method{Name: "operator()"}` | An exact call operator on a named callable type; `Const` selects a const call operator |
 | `ObjectArgs` on a constructor/method | Pointer transports converted to selected named native pointers, class references or copied values |
 | `Method.ObjectResult` | A pointer transport carrying a borrowed pointer/reference, or a newly allocated owned value |
-| `FunctionArgs` on a constructor/method | Pointer transports converted to exact fixed native function pointers |
+| `FunctionArgs` on a constructor/method | Pointer transports converted to exact fixed/variadic native function pointers |
 | `Method.FunctionResult` | A pointer transport carrying a borrowed native function pointer |
 | `Base{Name, Symbol}` in `Class.Bases` | `void *handle, void **output`; a borrowed public base view |
 | Optional `Class.Delete` | A `void **handle` slot consumed and cleared before native `delete`; omit for borrowed/static-only selections |
@@ -220,8 +220,11 @@ The executable [function manifest](../examples/cxx/functions.go) uses
 `Method.FunctionResult` to select exact native function-pointer types. Each
 selected slot uses `abi.Pointer` as its C transport. Function/object selections
 cannot overlap, and an output cannot select both result forms. Signatures accept
-fixed scalar/opaque-address default/cdecl arguments and results, including void
-results; the native compiler rejects mismatched callback prototypes. Null
+scalar/opaque-address default/cdecl arguments and results, including void
+results. For a variadic function pointer, set `Variadic` and include only its
+fixed prefix: `len(Args)` must equal `FixedArgs`, with at least one fixed argument.
+The descriptor names a pointer type, not a concrete call shape; appended tails
+are rejected. The native compiler rejects mismatched function prototypes. Null
 function pointers pass through, so their validity follows the original C++ API.
 Failed borrowed function results clear the output slot.
 
@@ -231,6 +234,15 @@ keep its symbol/function lease until the final call. A Go function value is not 
 native entry: use a generated C entry or `abi.NewCallback` with the selected
 signature. Dynamic Go callbacks require the optional libffi backend. The generated
 cgo/direct llgo transport itself needs no libffi when using existing native entries.
+
+The [executed variadic function manifest](../examples/cxx/variadic_functions.go)
+passes and returns native ellipsis entries through constructors, methods,
+conversion operators and an ellipsis tail. C++ supplies each call's concrete tail
+and default promotions. Generated cgo/direct llgo callers and dynamic libffi calls
+execute the same fixed C facade. Native entries borrow their code provider, which
+may outlive a destroyed wrapper object; captured state still needs its own owner.
+This does not create Go variadic callbacks. Use `abi.NewCallback` only with a
+supported fixed callback signature.
 
 Retained callbacks need callback and provider leases for their entire native
 lifetime. `Registration` can couple those leases, handle storage, and native
@@ -322,7 +334,8 @@ optional dynamic callers bind the same fixed C exports.
 Named object references/values remain available in the fixed prefix. Object
 arguments in the tail must use `ObjectPointer`; class values and references are
 rejected because passing nontrivial objects through ellipsis is not a portable
-contract. Native function-pointer descriptors remain fixed signatures. Variadic
+contract. Native function-pointer descriptors contain only their fixed prefix,
+while the enclosing method signature contains its concrete tail. Variadic
 constructors and zero-fixed-prefix ellipsis signatures are not selected by this
 manifest. Go variadic callbacks are still unsupported.
 
