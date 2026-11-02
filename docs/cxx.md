@@ -122,9 +122,11 @@ Exceptions from `noexcept` violations still terminate under the C++ contract.
 ## Class arguments and results
 
 The executable [object manifest](../examples/cxx/objects.go) uses `ObjectArg` to
-select a zero-based `abi.Pointer` argument and its `ObjectType{Name, Kind, Const}`.
+select a zero-based `abi.Pointer` argument and its `ObjectType{Name, Kind, Const, Volatile}`.
 `ObjectPointer` accepts null. `ObjectReference` requires a non-null object address;
-`Const` selects a const pointer/reference in the exact native signature.
+`ObjectRValueReference` requires a non-null address and passes the existing
+object as an xvalue. `Const` and `Volatile` select the exact named pointee/referent
+qualification.
 `ObjectValue` copies the native object inside C++, with no Go layout or byte copy.
 Constructors apply normal overload resolution; a value selection supplies an
 explicit native temporary. Methods still use an exact member/function pointer.
@@ -132,7 +134,7 @@ explicit native temporary. Methods still use an exact member/function pointer.
 `ObjectResult` requires `abi.Pointer` as the C result transport. Pointer/reference
 results borrow the native API's lifetime; reference addresses bypass overloaded
 `operator&`. Failed borrowed results clear the output slot. Native const results
-retain an exact const signature, but the opaque Go address cannot enforce read-only
+retain their exact cv-qualified signature, but the opaque Go address cannot enforce read-only
 access. Receivers and argument addresses must already have their selected native
 type; the facade does not perform RTTI checks or infer base offsets.
 
@@ -144,6 +146,23 @@ temporary destructor could otherwise invalidate publication and cleanup. Copy
 constructors may throw. C++17 prvalue results also support noncopyable/nonmovable
 classes through guaranteed copy elision. Destroy each returned owner using its
 native type before releasing the provider; an address slot does not own its object.
+
+The [executed move manifest](../examples/cxx/moves.go) selects a noncopyable move
+constructor, an rvalue argument, all twelve pointer/lvalue/rvalue cv overloads,
+and borrowed cv-qualified pointer/rvalue results. A reference result aliases its
+native owner; it does not create another owner. Reference addresses still bypass
+overloaded `operator&`. Moving does not clear or destroy the source handle: the
+native operation defines its post-call state, and the application destroys both
+owned sources and destinations explicitly. Move exceptions follow the existing
+output/publication rules and do not imply native mutation rollback.
+
+Named scalar and array rvalue references use the same opaque-address path. The
+fixture mutates an `abi.NativeValue` scalar and borrows a native array without
+copying C++ object bytes into Go. Generated cgo/direct llgo and dynamic libffi
+callers execute optimized/unoptimized libraries, including source reuse after
+moving, failed moves, occupied destinations, nulls and destructor counts.
+`Const`/`Volatile` flags on value selections remain unsupported. Volatile
+qualification preserves native accesses and does not add synchronization.
 
 Delete exports are optional, allowing static-only classes with private destructors
 and borrowed receivers. Omitting an export does not infer an alternative cleanup
@@ -177,7 +196,7 @@ all dereferences, arithmetic and union-member operations.
 | `using Row = int32_t[2]` | false / true | `int32_t (*)[2]` / `const int32_t (*)[2]` |
 | Named enum / union | false / true | Pointer to the named type / its const-qualified type |
 
-`Const` qualifies the **named pointee**; it does not recursively qualify the
+`Const` and `Volatile` qualify the **named pointee**; they do not recursively qualify the
 elements of a pointer alias. Names and argument/result pointer levels must match
 the native API. The compiler rejects incompatible element types, removed const
 qualifications and array/pointer-level mismatches. Nulls reach the selected API;
