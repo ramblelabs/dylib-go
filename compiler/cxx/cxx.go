@@ -52,12 +52,17 @@ const (
 // transports. A FunctionResult is borrowed and cannot also be an ObjectResult;
 // keep its provider alive while using it. Variadics and
 // ordinary aggregate transports remain unsupported.
+// Conversion selects a non-void conversion operator to the exact native result
+// type. Name must be empty, Signature.Args empty, and Static false. Explicit
+// conversion operators are supported; ABI, ownership and receiver qualifiers
+// use the same contracts as ordinary methods.
 type Method struct {
 	Name, Symbol   string
 	Signature      abi.Signature
 	Const, Static  bool
 	Volatile       bool
 	Ref            RefQualifier
+	Conversion     bool
 	ObjectArgs     []ObjectArg
 	ObjectResult   *ObjectType
 	FunctionArgs   []FunctionArg
@@ -169,7 +174,10 @@ return DYLIB_CXX_SUCCESS;
 		}
 		for _, method := range class.Methods {
 			callOperator := method.Name == "operator()"
-			if (!identifier(method.Name) && !callOperator) || method.Ref > RefRValue || method.Static && (method.Const || method.Volatile || method.Ref != RefNone || callOperator) {
+			if method.Conversion && (method.Name != "" || method.Static || len(method.Signature.Args) != 0 || method.Signature.Result == abi.Void) {
+				return nil, fmt.Errorf("cxx: conversion %q requires an unnamed non-static member, no arguments and a non-void result", method.Symbol)
+			}
+			if !method.Conversion && (!identifier(method.Name) && !callOperator) || method.Ref > RefRValue || method.Static && (method.Const || method.Volatile || method.Ref != RefNone || callOperator) {
 				return nil, fmt.Errorf("cxx: invalid method %q or static/cv/ref combination", method.Name)
 			}
 			if err := methodSignature(method.Signature); err != nil {
@@ -245,7 +253,11 @@ return DYLIB_CXX_SUCCESS;
 					call = "(static_cast<" + receiver + " &&>(*static_cast<" + receiver + " *>(handle)).*entry)(" + args + ")"
 				}
 			}
-			fmt.Fprintf(&body, "auto entry = static_cast<entry_type>(&%s::%s);\n", class.Name, method.Name)
+			selector := method.Name
+			if method.Conversion {
+				selector = "operator " + nativeResult
+			}
+			fmt.Fprintf(&body, "auto entry = static_cast<entry_type>(&%s::%s);\n", class.Name, selector)
 			switch object := method.ObjectResult; {
 			case method.FunctionResult != nil:
 				fmt.Fprintf(&body, "*output = reinterpret_cast<void *>(%s);\n", call)
