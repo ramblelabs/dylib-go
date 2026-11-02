@@ -239,13 +239,7 @@ return DYLIB_CXX_SUCCESS;
 					qualifier += " &&"
 				}
 				fmt.Fprintf(&body, "using entry_type = %s (%s::*)(%s)%s;\n", nativeResult, class.Name, types, qualifier)
-				receiver := class.Name
-				if method.Const {
-					receiver = "const " + receiver
-				}
-				if method.Volatile {
-					receiver = "volatile " + receiver
-				}
+				receiver := cvQualified(class.Name, method.Const, method.Volatile)
 				call = "(static_cast<" + receiver + " *>(handle)->*entry)(" + args + ")"
 				if method.Ref == RefRValue {
 					call = "(static_cast<" + receiver + " &&>(*static_cast<" + receiver + " *>(handle)).*entry)(" + args + ")"
@@ -257,10 +251,10 @@ return DYLIB_CXX_SUCCESS;
 				fmt.Fprintf(&body, "*output = reinterpret_cast<void *>(%s);\n", call)
 			case owned:
 				fmt.Fprintf(&body, "auto object = new %s(%s);\nif (!object) return DYLIB_CXX_EXCEPTION;\n*output = const_cast<void *>(static_cast<const volatile void *>(object));\n", object.Name, call)
-			case object != nil && object.Kind == ObjectReference:
+			case object != nil && (object.Kind == ObjectReference || object.Kind == ObjectRValueReference):
 				// A byte reference bypasses overloaded operator& without a C++
 				// standard-library header or compiler-specific intrinsic.
-				fmt.Fprintf(&body, "auto &view = %s;\n*output = const_cast<char *>(&reinterpret_cast<const volatile char &>(view));\n", call)
+				fmt.Fprintf(&body, "auto &&view = %s;\n*output = const_cast<char *>(&reinterpret_cast<const volatile char &>(view));\n", call)
 			case object != nil:
 				fmt.Fprintf(&body, "*output = const_cast<void *>(static_cast<const volatile void *>(%s));\n", call)
 			default:

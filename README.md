@@ -857,6 +857,12 @@ through `Method.Const`, `Method.Volatile` and `Method.Ref`, including native
 qualified virtual dispatch. Rvalue calls preserve caller ownership; see the
 [executed receiver selections](examples/cxx/receivers.go) and [lifetime contract](docs/cxx.md#receiver-cvref-qualifiers).
 
+`ObjectRValueReference` also supports explicit moving arguments and borrowed
+rvalue-reference results through opaque addresses. `ObjectType.Const` and
+`ObjectType.Volatile` select pointee/referent qualifications. The
+[executed move manifest](examples/cxx/moves.go) covers noncopyable construction,
+post-move source state, native scalar/array references and explicit destruction.
+
 ## Native Swift calls with ABIBridge
 
 The optional [ABIBridge adapter](docs/abibridge.md) calls synchronous thin Swift functions on macOS amd64/arm64 through a separately built native facade. Go and llgo support fixed-width scalars, native pointers, explicitly described trivial Swift storage and formally indirect values without the Go `libffi` tag. Owned Swift values use complete metadata and copy/destroy witnesses. `InvokeManaged` borrows guaranteed arguments and owns returned values using explicit passing layouts. Generic calls, async/throws and device ABIs remain outside this adapter.

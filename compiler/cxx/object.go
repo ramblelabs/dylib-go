@@ -15,43 +15,55 @@ const (
 	ObjectPointer ObjectKind = iota + 1
 	ObjectReference
 	ObjectValue
+	ObjectRValueReference // Borrowed T&&; does not consume the caller's handle.
 )
 
 // ObjectType selects an exact named native type. ObjectPointer also accepts
 // named scalar, void, enum, union, array and pointer pointees; no Go layout is
-// required. Const qualifies the named pointee of a pointer/reference;
-// top-level const values are unsupported. Value results are newly allocated and
+// required. Const and Volatile qualify the named pointee/referent;
+// cv-qualified values are unsupported. Value results are newly allocated and
 // owned; pointer/reference results borrow the native API's lifetime. Const is a
 // native signature contract, not a restriction enforced on Go address values.
 type ObjectType struct {
-	Name  string
-	Kind  ObjectKind
-	Const bool
+	Name            string
+	Kind            ObjectKind
+	Const, Volatile bool
 }
 
 // ObjectArg replaces a zero-based abi.Pointer argument with a named native type.
 // References and values require non-null addresses. Value arguments copy the
 // object in C++ and require a noexcept destructor; copy constructors may throw.
+// Rvalue references pass the existing object as an xvalue without copying it or
+// consuming its handle. The native operation defines its post-call state.
 type ObjectArg struct {
 	Index int
 	Type  ObjectType
 }
 
 func (o ObjectType) native() (string, error) {
-	if !qualifiedName(o.Name) || o.Kind < ObjectPointer || o.Kind > ObjectValue || o.Const && o.Kind == ObjectValue {
+	if !qualifiedName(o.Name) || o.Kind < ObjectPointer || o.Kind > ObjectRValueReference || (o.Const || o.Volatile) && o.Kind == ObjectValue {
 		return "", fmt.Errorf("invalid native object type %+v", o)
 	}
-	name := o.Name
-	if o.Const {
-		name = "const " + name
-	}
+	name := cvQualified(o.Name, o.Const, o.Volatile)
 	switch o.Kind {
 	case ObjectPointer:
 		name += " *"
 	case ObjectReference:
 		name += " &"
+	case ObjectRValueReference:
+		name += " &&"
 	}
 	return name, nil
+}
+
+func cvQualified(name string, constant, volatile bool) string {
+	if constant {
+		name = "const " + name
+	}
+	if volatile {
+		name = "volatile " + name
+	}
+	return name
 }
 
 // Throwing temporary destructors could run after a new result is constructed but
@@ -83,10 +95,7 @@ func nativeArguments(args []abi.Type, objects []ObjectArg, functions []FunctionA
 		if err != nil {
 			return
 		}
-		pointee := native.Name
-		if native.Const {
-			pointee = "const " + pointee
-		}
+		pointee := cvQualified(native.Name, native.Const, native.Volatile)
 		names[i] = fmt.Sprintf("static_cast<%s *>(p%d)", pointee, i)
 		if native.Kind != ObjectPointer {
 			fmt.Fprintf(&validation, "if (!p%d) return DYLIB_CXX_INVALID_ARGUMENT;\n", i)
@@ -95,6 +104,8 @@ func nativeArguments(args []abi.Type, objects []ObjectArg, functions []FunctionA
 		if native.Kind == ObjectValue {
 			validation.WriteString(valueDestructor(native.Name, fmt.Sprintf("dylib_value_%d", i)))
 			names[i] = native.Name + "(" + names[i] + ")"
+		} else if native.Kind == ObjectRValueReference {
+			names[i] = fmt.Sprintf("static_cast<%s &&>(%s)", pointee, names[i])
 		}
 	}
 	for _, function := range functions {
