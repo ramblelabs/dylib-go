@@ -211,6 +211,11 @@ pinned manifest and ordered symbol-to-provider bindings; see the
 The module loader validates provider versions and declared exports, loads selected dependency
 graphs, retains imported code/data, and closes consumers before providers. See
 the [executed manifest](examples/modules/manifest.go) and [module guide](docs/modules.md).
+`module.NewLazy` defers an explicit graph builder until the first `WithGraph`.
+Concurrent first uses share initialization; failed initialization is cached, and
+`Close` drains scopes/leases with cleanup retry. The [executed symbol-loading example](examples/modules/lazy.go)
+selects its catalog plan now and opens that whole graph on first use; see
+[lazy graph ownership](docs/lazy-modules.md).
 `module.Manager` supports [replacement with explicit state migration](docs/replacement.md),
 retaining old scopes and code leases while new calls use the replacement.
 
