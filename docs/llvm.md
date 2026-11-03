@@ -52,7 +52,21 @@ and native code lifetime follow the normal loader rules.
 
 The input snapshot is limited to 256 MiB and compiler diagnostics to 32 KiB.
 Cancellation terminates the compiler process. Failed compilation or output
-validation removes temporary files; cleanup errors are reported too. No shell
+validation attempts to remove temporary files. If cleanup fails, `Compile`,
+`CompileArchive` and `CompileModules` return a non-nil artifact along with the
+joined compiler/validation and cleanup errors. That result owns failed cleanup
+only: retry its `Close` after resolving the filesystem error; its `Path`/`Info`
+are not a valid compilation result. Merge/archive failures retain the whole
+owned tree, including failed member compilation storage. A compilation failure
+whose cleanup succeeds returns no artifact. The executed examples close returned artifacts even on
+error and report cleanup failures.
+
+Portable Go/llgo tests force real cleanup failures after compiler failure: denied
+directory access on Unix and an open file handle on Windows. Object, archive
+member and module-merge cases preserve both errors, then remove retained storage
+through repeated `Close` after permission/handle recovery.
+
+No shell
 interprets file names or compiler paths. Successful object output is inspected
 under the existing parser limits. Unsupported features can still be reported
 in `Info.Unsupported` or rejected when linking.

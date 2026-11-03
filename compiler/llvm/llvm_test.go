@@ -17,6 +17,32 @@ import (
 // process/file ownership path as llc on Windows, macOS and Linux.
 func init() {
 	switch os.Getenv("DYLIB_LLVM_COMPILER_HELPER") {
+	case "cleanup-lock":
+		for i, arg := range os.Args {
+			if arg == "-o" && i+1 < len(os.Args) {
+				output, err := filepath.Abs(os.Args[i+1])
+				if err != nil {
+					os.Exit(10)
+				}
+				blocked := filepath.Join(filepath.Dir(output), "blocked")
+				if os.MkdirAll(blocked, 0700) != nil || os.WriteFile(filepath.Join(blocked, "locked"), []byte("owned"), 0600) != nil {
+					os.Exit(11)
+				}
+				marker := os.Getenv("DYLIB_LLVM_CLEANUP_MARKER")
+				if os.WriteFile(marker+".tmp", []byte(blocked), 0600) != nil || os.Rename(marker+".tmp", marker) != nil {
+					os.Exit(12)
+				}
+				deadline := time.Now().Add(20 * time.Second)
+				for time.Now().Before(deadline) {
+					if _, err := os.Stat(os.Getenv("DYLIB_LLVM_CLEANUP_RELEASE")); err == nil {
+						os.Exit(3)
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+				os.Exit(13)
+			}
+		}
+		os.Exit(14)
 	case "wait":
 		if marker := os.Getenv("DYLIB_LLVM_WAIT_MARKER"); marker != "" {
 			if err := os.WriteFile(marker, []byte("started"), 0600); err != nil {

@@ -48,7 +48,9 @@ func (a *Archive) Close() error {
 // archives and text IR members are not accepted. Use SourceDirectories with
 // dylib.Options.LibraryPaths on the destination session for original dependencies.
 // The input/output limits are 256 MiB with at most 4096 object members.
-func CompileArchive(ctx context.Context, path string, opts Options) (_ *Archive, err error) {
+// On error, a non-nil result owns failed cleanup only: retry Close rather than
+// loading its Path or Info as a valid compiled archive.
+func CompileArchive(ctx context.Context, path string, opts Options) (result *Archive, err error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("llvm: nil context")
 	}
@@ -87,6 +89,7 @@ func CompileArchive(ctx context.Context, path string, opts Options) (_ *Archive,
 	defer func() {
 		if err != nil {
 			if cleanup := archive.Close(); cleanup != nil {
+				result = archive
 				err = errors.Join(err, fmt.Errorf("llvm: temporary cleanup: %w", cleanup))
 			}
 		}
