@@ -40,11 +40,24 @@ type CallableDeclaration struct {
 	Deleted, Defaulted bool
 }
 
-// ClassDeclaration contains direct public callables in declaration order.
+// BaseDeclaration describes one direct base in base-specifier order. NativeType
+// preserves the compiler's spelling in the selected class's context; it is not
+// necessarily a qualified or independently accessible name. Access is the
+// effective "public", "protected" or "private" inheritance access. Virtual
+// describes this edge only. These fields do not prove an unambiguous conversion;
+// use DiscoverBases or the native facade compiler after selecting usable names.
+type BaseDeclaration struct {
+	NativeType string
+	Access     string
+	Virtual    bool
+}
+
+// ClassDeclaration contains direct bases and public callables in declaration order.
 // Name is the caller's selected name/alias, rather than a guessed canonical name.
 type ClassDeclaration struct {
 	Name      string
 	Abstract  bool
+	Bases     []BaseDeclaration
 	Callables []CallableDeclaration
 }
 
@@ -53,9 +66,11 @@ type ClassDeclaration struct {
 // and function-template declarations; named class-template specializations can
 // be selected through aliases. Lambda aliases can be resolved through decltype
 // factory/variable references, with at most eight declaration queries after the
-// initial alias query. Native spellings are descriptive metadata only:
-// the caller still chooses ABI signatures, ownership and C export names for
-// Generate, whose native compiler checks the exact selected prototypes.
+// initial alias query. Direct bases include non-public edges for diagnostics,
+// without inherited traversal or a promise of an unambiguous conversion.
+// Native spellings are descriptive metadata only: the caller still chooses
+// ABI signatures, ownership and C export names for Generate, whose native
+// compiler checks the exact selected prototypes.
 // Queries use the original header path and DiscoveryOptions target/flags, with
 // the same IO and cancellation bounds as DiscoverBases. Errors return nil.
 func DiscoverMembers(ctx context.Context, header, name string, opts DiscoveryOptions) (*ClassDeclaration, error) {
@@ -133,6 +148,12 @@ func memberProbe(name, record string) (source, namespace string) {
 
 type memberReference struct{ ID, Kind, Name string }
 
+type memberBase struct {
+	Access    string
+	IsVirtual bool
+	Type      struct{ QualType string }
+}
+
 type memberNode struct {
 	ReferencedDecl                                *memberReference
 	OriginalNamespace, NominatedNamespace         *memberReference
@@ -143,6 +164,7 @@ type memberNode struct {
 	Type                                          struct{ QualType string }
 	DefinitionData                                struct{ IsAbstract, IsLambda bool }
 	Decl                                          *memberReference
+	Bases                                         []memberBase
 	Inner                                         []memberNode
 }
 
@@ -350,6 +372,12 @@ func publicCallables(name string, record *memberNode) (*ClassDeclaration, error)
 		}
 	default:
 		return nil, fmt.Errorf("cxx: selected definition is not a class/struct")
+	}
+	for _, base := range record.Bases {
+		if base.Type.QualType == "" || base.Access != "public" && base.Access != "protected" && base.Access != "private" {
+			return nil, fmt.Errorf("cxx: missing native base type or invalid inheritance access")
+		}
+		result.Bases = append(result.Bases, BaseDeclaration{NativeType: base.Type.QualType, Access: base.Access, Virtual: base.IsVirtual})
 	}
 	for _, n := range record.Inner {
 		if n.Kind == "AccessSpecDecl" {

@@ -446,6 +446,37 @@ return an error. The same AST, IO and cancellation bounds apply to every query.
 Native Go/llgo tests discover a mutable captured operator, generate its explicit
 C facade, and execute stateful calls and owner destruction at `-O0`/`-O2`.
 
+## Direct base declarations
+
+`DiscoverMembers` also returns `ClassDeclaration.Bases` in base-specifier order.
+Each `BaseDeclaration` records the native type spelling, effective `Access`
+(`public`, `protected` or `private`) and `Virtual` flag for that direct edge.
+No base-name list is needed to inspect these declarations, and the existing
+selected-record query supplies them without another compiler process. Aliases,
+forward declarations and same-name classes retain the existing identity checks.
+
+The native type spelling belongs to the declaring class's context. A relative
+name, nested type, private typedef or template spelling may need an accessible
+qualified alias before it can select a facade type. Metadata does not turn that
+spelling into a Go signature or a safe source fragment. `Generate` and
+`DiscoverBases` retain their validated-name requirements.
+
+A public edge does not prove an unambiguous pointer conversion: a class may
+contain another subobject of the same base through a separate path. Non-public
+edges are returned for diagnostics; they do not authorize a cast. `Virtual`
+describes the direct edge, without recursively traversing the inheritance graph
+or inferring object offsets, ownership or a virtual destructor contract. The
+native compiler still performs every pointer adjustment.
+
+The [executed direct-base example](../examples/cxx/direct_bases.go) resolves its
+fixture's contextual names, asks `DiscoverBases` to validate public conversions,
+and generates selected views. Go/llgo tests execute secondary-base virtual
+dispatch, virtual-base state, null output handling and owner destruction through
+generated cgo/direct llgo and optional dynamic callers at `-O0`/`-O2`. Metadata
+and facade compilation cover all eight targets, including default/private/
+protected access, aliases, nested types, template bases, preprocessing,
+architecture-dependent bases and ambiguous/shared-diamond conversion controls.
+
 ## Coverage and remaining work
 
 Go and llgo CI compile the base facade's C declarations and C++ source for all
@@ -474,7 +505,7 @@ abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
 Unrestricted whole-header declaration discovery,
-variadic constructors and class-value tails, inheritance discovery beyond selected types,
+variadic constructors and class-value tails, recursive inheritance discovery,
 downcasts/crosscasts and C++ header discovery remain outside this manifest. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately
 qualified Linux/macOS subset; see [unwind scope](unwind.md). The generator
