@@ -852,6 +852,11 @@ an explicit namespace, including named child namespaces, public nested types,
 template-specialization aliases and lambda aliases. Compiler checks filter out
 incomplete and non-class types. See [namespace discovery and its bounds](docs/cxx.md#namespace-class-discovery).
 
+`ClassDeclaration.Bases` reports direct base types, access and virtual inheritance
+for a selected class without a preselected base-name list. Native spellings stay
+contextual, and conversion eligibility still needs compiler validation; see the
+[executed base selection](examples/cxx/direct_bases.go) and [direct base declarations](docs/cxx.md#direct-base-declarations).
+
 Explicit member manifests also support all twelve receiver cv/ref combinations
 through `Method.Const`, `Method.Volatile` and `Method.Ref`, including native
 qualified virtual dispatch. Rvalue calls preserve caller ownership; see the
