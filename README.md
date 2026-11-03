@@ -216,6 +216,10 @@ Concurrent first uses share initialization; failed initialization is cached, and
 `Close` drains scopes/leases with cleanup retry. The [executed symbol-loading example](examples/modules/lazy.go)
 selects its catalog plan now and opens that whole graph on first use; see
 [lazy graph ownership](docs/lazy-modules.md).
+`module.OpenCompiled` prepares selected provider inputs with an explicit Go
+compiler callback and retains returned artifacts through native close and cleanup
+retry. See the [executed IR/bitcode example](examples/modules/compile.go) and
+[compiler ownership contract](docs/compiled-modules.md).
 `module.Manager` supports [replacement with explicit state migration](docs/replacement.md),
 retaining old scopes and code leases while new calls use the replacement.
 

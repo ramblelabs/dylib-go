@@ -10,12 +10,17 @@ No llgo compiler, libffi or external dependency resolver is required.
 | `Manifest.Validate()` | Check structural contracts, names, versions, declared exports and cycles without reading native inputs |
 | `Read(reader)` | Decode and validate one JSON document, up to 1 MiB; reject unknown fields and trailing documents |
 | `Open(base, manifest, options)` | Load selected roots and their transitive providers, resolving relative file paths from `base` |
+| `OpenCompiled(ctx, base, manifest, options, compile)` | Prepare selected files with an explicit compiler before native loading; own returned artifacts through graph close and cleanup retry |
 | `Load(path, options)` | Read a manifest and use its containing directory as the input base |
 | `Discover(ctx, roots, directories...)` | Read provider catalogs from explicit directories and return a complete manifest for exact root versions; no native loading |
 | `DiscoverCompatible(ctx, roots, directories...)` | Select a consistent graph from explicit acceptable root versions in preference order, pinning exact imports before native loading |
 | `DiscoverVersionRanges(ctx, roots, directories...)` | Expand caller-declared SemVer root intervals, then select and pin a consistent exact-version graph before native loading |
 | `Graph.Session(name)` | Borrow one loaded session for normal library calls and adapters |
 | `Graph.Close()` | Retire graph lookup, then close consumers before providers; concurrent closes share one attempt; failed cleanup retains consumers/providers for retry |
+
+The [compiler contract](compiled-modules.md) integrates optional source/IR/archive
+preparation with graph ownership. Ordinary `Open` and `Load` keep their existing
+native input behavior.
 
 The [executed manifest example](../examples/modules/manifest.go) imports a C
 function and global data using different consumer linkage names. Native tests
