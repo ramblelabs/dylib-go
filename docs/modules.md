@@ -238,3 +238,9 @@ provider data, and external function/data leases remain usable while graph
 lookup is retired. Tests also cover native missing inputs and stale exports
 without fallback, catalog ambiguity, deterministic diagnostics, exact-version
 conflicts, repeated requests, request ownership and cancellation.
+
+
+`module.NewLazy` can defer the selected graph's native loading until first use;
+see [lazy graph ownership](lazy-modules.md). All selected roots load together.
+This leaves the core session's publication rules unchanged and does not add
+per-symbol mutation to an already published graph.
