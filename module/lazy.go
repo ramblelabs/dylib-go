@@ -40,8 +40,9 @@ type Lazy struct {
 // manifests, options and other captured inputs must stay valid until first use;
 // this constructor does not snapshot them. The builder remains responsible for
 // resources it never returns, including if it panics before returning.
-// Neither build nor its initialization callbacks may call this same owner's
-// WithGraph/Close: they would wait for their own initialization. Close and uses
+// Neither build nor its initialization/failure-cleanup callbacks may call
+// this same owner's WithGraph/Close: they would wait for their own initialization.
+// Close and uses
 // may otherwise be concurrent; native effects cannot be undone automatically.
 func NewLazy(build func() (*Graph, error)) (*Lazy, error) {
 	if build == nil {

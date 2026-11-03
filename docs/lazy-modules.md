@@ -63,9 +63,10 @@ joined with an initialization error when applicable. Concurrent closes share
 one attempt; failed graph cleanup stays owned for retry.
 
 Call Close outside this owner's scopes, builder and native callbacks. During
-initialization, neither the builder nor its callbacks may call this owner's
-`WithGraph` or `Close`: initialization would wait for itself. Finalizer reentry
-through `WithGraph` observes retirement and receives `ErrClosed`. Do not copy a
+initialization, neither the builder nor its initialization/failure-cleanup
+callbacks may call this owner's
+`WithGraph` or `Close`: initialization would wait for itself. During Close, finalizer
+reentry through `WithGraph` observes retirement and receives `ErrClosed`. Do not copy a
 lazy owner; nil/zero owners reject use, and their Close is harmless.
 
 Go/llgo CI execute native objects, archives and libraries at `-O0`/`-O2`:
