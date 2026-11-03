@@ -74,7 +74,9 @@ func (a *artifactStorage) close() error {
 // Compile snapshots a regular IR/bitcode file and emits PIC native object code.
 // It does not infer C signatures, link language runtimes, or execute the input.
 // The normal loader's target, relocation and runtime checks still apply.
-func Compile(ctx context.Context, path string, opts Options) (_ *Object, err error) {
+// On error, a non-nil result owns failed cleanup only: retry Close rather than
+// loading its Path or Info as a valid compiled object.
+func Compile(ctx context.Context, path string, opts Options) (result *Object, err error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("llvm: nil context")
 	}
@@ -105,6 +107,7 @@ func Compile(ctx context.Context, path string, opts Options) (_ *Object, err err
 	defer func() {
 		if err != nil {
 			if cleanup := object.Close(); cleanup != nil {
+				result = object
 				err = errors.Join(err, fmt.Errorf("llvm: temporary cleanup: %w", cleanup))
 			}
 		}

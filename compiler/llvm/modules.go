@@ -24,7 +24,9 @@ type MergeOptions struct {
 // same explicit target triple and data layout. No target override, archive member
 // selection, language runtime linking, or ABI translation is performed.
 // Inputs and normalized IR each have a combined 256 MiB limit, with 1–256 modules.
-func CompileModules(ctx context.Context, paths []string, opts MergeOptions) (_ *Object, err error) {
+// On error, a non-nil result owns the whole merge tree for Close retry only;
+// its Path and Info do not describe a valid compiled object.
+func CompileModules(ctx context.Context, paths []string, opts MergeOptions) (result *Object, err error) {
 	if ctx == nil {
 		return nil, fmt.Errorf("llvm: nil context")
 	}
@@ -42,6 +44,7 @@ func CompileModules(ctx context.Context, paths []string, opts MergeOptions) (_ *
 	defer func() {
 		if err != nil {
 			if cleanup := storage.close(); cleanup != nil {
+				result = &Object{storage: storage}
 				err = errors.Join(err, fmt.Errorf("llvm: temporary cleanup: %w", cleanup))
 			}
 		}

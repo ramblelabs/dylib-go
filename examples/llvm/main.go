@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -13,12 +14,14 @@ import (
 	"github.com/ramblelabs/dylib-go/compiler/llvm"
 )
 
-func call(input string) (abi.Value, error) {
+func call(input string) (result abi.Value, err error) {
 	object, err := llvm.Compile(context.Background(), input, llvm.Options{Compiler: os.Getenv("DYLIB_LLC")})
+	if object != nil {
+		defer func() { err = errors.Join(err, object.Close()) }()
+	}
 	if err != nil {
 		return abi.Value{}, err
 	}
-	defer object.Close()
 	session := dylib.New(dylib.Options{LibraryPaths: object.SourceDirectories})
 	defer session.Close()
 	if err := session.Load(object.Path); err != nil {

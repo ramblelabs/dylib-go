@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +14,7 @@ import (
 	"github.com/ramblelabs/dylib-go/compiler/llvm"
 )
 
-func call(inputs []string) (abi.Value, error) {
+func call(inputs []string) (result abi.Value, err error) {
 	compiler, linker := os.Getenv("DYLIB_LLC"), os.Getenv("DYLIB_LLVM_LINK")
 	if linker == "" && compiler != "" {
 		linker = filepath.Join(filepath.Dir(compiler), "llvm-link")
@@ -21,10 +22,12 @@ func call(inputs []string) (abi.Value, error) {
 	object, err := llvm.CompileModules(context.Background(), inputs, llvm.MergeOptions{
 		Options: llvm.Options{Compiler: compiler}, Linker: linker,
 	})
+	if object != nil {
+		defer func() { err = errors.Join(err, object.Close()) }()
+	}
 	if err != nil {
 		return abi.Value{}, err
 	}
-	defer object.Close()
 	session := dylib.New(dylib.Options{LibraryPaths: object.SourceDirectories})
 	defer session.Close()
 	if err := session.Load(object.Path); err != nil {
