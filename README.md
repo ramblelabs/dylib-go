@@ -203,6 +203,11 @@ backtracking. `module.DiscoverVersionRanges` expands caller-declared SemVer
 intervals into that same graph search, preferring newer matching versions and
 excluding prereleases by default. These APIs do not infer binary ABI versions or
 signatures. See the [executed discovery examples](examples/modules/manifest.go).
+`module.DiscoverSymbols` selects providers by declared function/data export and
+exact version, with optional provider names to resolve ambiguity. It returns a
+pinned manifest and ordered symbol-to-provider bindings; see the
+[executed symbol discovery example](examples/modules/symbols.go) and
+[symbol selection contract](docs/modules.md#symbol-selected-provider-roots).
 The module loader validates provider versions and declared exports, loads selected dependency
 graphs, retains imported code/data, and closes consumers before providers. See
 the [executed manifest](examples/modules/manifest.go) and [module guide](docs/modules.md).
@@ -1065,7 +1070,7 @@ The former experimental `BindInt32`, `CallInt32`, and `Int32Func` APIs have been
 | `compiler/clang/` | Optional validated C prototypes, dynamic descriptors and direct llgo adapter generation |
 | `compiler/cbridge/` | Original-header C facades with checked native transport storage for complex record ABIs |
 | `compiler/cxx/` | Go-rendered C++17 class facades with fixed C entry points and exception status codes |
-| `module/` | Go-only provider catalog discovery, versioned dependency graphs, explicit migration and managed replacement |
+| `module/` | Go-only provider catalog and symbol discovery, versioned dependency graphs, explicit migration and managed replacement |
 | `internal/native/` | OS memory, instruction cache, and shared-library operations |
 | `examples/call/` | Fixed-signature adapter used only by the CLI and tests |
 | `examples/cgo/`, `examples/llgo/`, `examples/bind/`, `examples/callback/` | Executable README examples |
