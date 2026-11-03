@@ -857,6 +857,11 @@ for a selected class without a preselected base-name list. Native spellings stay
 contextual, and conversion eligibility still needs compiler validation; see the
 [executed base selection](examples/cxx/direct_bases.go) and [direct base declarations](docs/cxx.md#direct-base-declarations).
 
+`DiscoverHierarchy` follows public base declarations with an explicit name resolver
+and bounded Go traversal. It returns class metadata plus compiler-validated
+transitive/virtual conversions; see the [executed hierarchy example](examples/cxx/hierarchy.go)
+and [selection bounds](docs/cxx.md#recursive-hierarchy-selection).
+
 Explicit member manifests also support all twelve receiver cv/ref combinations
 through `Method.Const`, `Method.Volatile` and `Method.Ref`, including native
 qualified virtual dispatch. Rvalue calls preserve caller ownership; see the
