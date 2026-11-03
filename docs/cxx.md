@@ -477,6 +477,48 @@ and facade compilation cover all eight targets, including default/private/
 protected access, aliases, nested types, template bases, preprocessing,
 architecture-dependent bases and ambiguous/shared-diamond conversion controls.
 
+## Recursive hierarchy selection
+
+`DiscoverHierarchy(ctx, header, root, resolve, options)` follows public base
+declarations recursively in Go. `BaseNameResolver` supplies an accessible
+qualified name/alias for each contextual native spelling; returning an empty
+name skips that branch. Non-public declarations remain visible in metadata but
+do not reach the resolver. The [executed hierarchy example](../examples/cxx/hierarchy.go)
+provides a policy for its own header rather than guessing how arbitrary C++ names
+resolve.
+
+`ClassHierarchy.Classes` preserves breadth-first selection order and each class's
+original direct-base/callable metadata. Distinct selected names are visited once;
+different aliases of one native class may remain separate selections.
+`Conversions` contains the compiler-confirmed public, unambiguous conversions
+among those names, including transitive and virtual bases. It is not a direct-edge
+list. A shared virtual diamond can expose one root-to-base conversion, while an
+ambiguous nonvirtual diamond omits that conversion and retains usable intermediate
+views. The native compiler still performs every pointer adjustment.
+
+The resolver owns the mapping between a descriptive spelling and its selected
+alias. Batched compiler checks reject unrelated types and self/alias-self
+selections; they do not prove that an application supplied the exact alias for a
+particular base declaration. No returned conversion relies on that assumption:
+each conversion is independently checked by the existing `DiscoverBases` rules.
+Unsupported template spellings need named aliases, and inaccessible names may
+need to be skipped. ABI, lifetime, ownership and export names stay explicit.
+
+A query accepts at most 32 selected names and 256 direct base declarations across
+visited classes, including skipped/non-public declarations. It snapshots compiler
+and header paths, target and flag strings before callbacks run. Existing per-query
+source, AST, diagnostic and cancellation limits still apply. Callbacks run
+synchronously; files, process environment and relative include-flag interpretation
+must remain stable during compiler queries. Errors, exceeded budgets and
+cancellation return nil without publishing a partial hierarchy.
+
+Tests cover target/preprocessor-dependent bases, aliases, nested/template types,
+resolver errors, mutation of the caller's flag slice, skipped/non-public branches,
+self/unrelated selections, exact name limits and base budgets. Generated cgo,
+direct llgo and dynamic callers execute shared virtual-base identity, composed
+views, virtual dispatch, nulls, constructor exceptions and destruction at `-O0`
+and `-O2`; metadata and facade compilation cover all eight targets.
+
 ## Coverage and remaining work
 
 Go and llgo CI compile the base facade's C declarations and C++ source for all
@@ -505,7 +547,7 @@ abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
 Unrestricted whole-header declaration discovery,
-variadic constructors and class-value tails, recursive inheritance discovery,
+variadic constructors and class-value tails, automatic base-name resolution,
 downcasts/crosscasts and C++ header discovery remain outside this manifest. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately
 qualified Linux/macOS subset; see [unwind scope](unwind.md). The generator
