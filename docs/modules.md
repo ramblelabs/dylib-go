@@ -198,3 +198,43 @@ versions from `1.0.0` up to `2.0.0`. Native Go/llgo tests use providers with dis
 results to verify stable/prerelease selection, metadata fallback, retirement and
 native failure without fallback. Objects, archives and shared libraries execute
 at `-O0` and `-O2`.
+
+## Symbol-selected provider roots
+
+`DiscoverSymbols(ctx, requests, directories...)` selects catalog providers by
+exact declared linkage name and opaque ABI version. `SymbolRequirement.Provider`
+is optional: when empty, exactly one module must export that symbol at the
+requested version. Multiple matches fail, even if one candidate has missing
+native files or an invalid dependency graph. Directory order and native loading
+attempts never resolve ambiguity. An explicit provider name selects one module;
+all local catalog declarations still receive normal validation.
+
+`SymbolSelection.Manifest` is an ordinary complete manifest with exact versions,
+absolute input paths and reachable dependencies. `Symbols` preserves request
+order, fills each provider name and retains repeated requests; each selected
+provider is a manifest root once. Requests for conflicting versions of one module
+fail, including conflicts introduced by dependencies. Selection copies the request
+records and does not mutate the caller's slice.
+
+The [executed example](../examples/modules/symbols.go) requests a function and a
+data export without their module names. Pass the manifest to `Open`, obtain each
+provider with `Graph.Session(binding.Provider)`, then use its symbol with the
+normal typed adapter or `Bind` signature. This flow reads catalogs once and
+loads providers selected by the requested exports; metadata discovery itself
+opens no native input and executes no code. A stale declared export is detected
+by `Open`, and native failure does not select another provider.
+
+The existing catalog/IO limits apply, with 1-256 symbol requests. Cancellation,
+missing/ambiguous contracts, invalid dependencies and exceeded budgets return a
+zero selection rather than a partial plan. Matching an export proves neither its
+signature nor binary ABI compatibility. The API does not search system paths,
+compile providers, demangle names, or add deferred loading to a published session.
+Serialize the selection's `Manifest` field when a normal manifest JSON document
+is needed; its schema stays unchanged.
+
+Go/llgo CI execute automatic and explicit provider selection with native objects,
+archives and complete libraries at `-O0`/`-O2`. Function calls consume retained
+provider data, and external function/data leases remain usable while graph
+lookup is retired. Tests also cover native missing inputs and stale exports
+without fallback, catalog ambiguity, deterministic diagnostics, exact-version
+conflicts, repeated requests, request ownership and cancellation.
