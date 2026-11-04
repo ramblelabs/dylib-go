@@ -1010,6 +1010,9 @@ func newImage(objs []*object, defs map[string]definition, external func(string) 
 		}
 	}
 	for _, o := range objs {
+		if err := validateELFARM64PatchOrder(o); err != nil {
+			return nil, err
+		}
 		for _, r := range o.relocs {
 			if e := im.relocate(o, r); e != nil {
 				return nil, fmt.Errorf("%s: relocation %d at section %d+%#x: %w", o.info.Name, r.typ, r.section, r.offset, e)

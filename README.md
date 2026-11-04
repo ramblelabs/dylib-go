@@ -64,7 +64,7 @@ Mach-O and i386 COFF C names omit one leading linker underscore. Mach-O supports
 ELF amd64/i386 size relocations use the selected object definition's size, including merged common storage. Address-only host symbols cannot supply size metadata; see [ELF size rules](docs/elf.md).
 AArch64 instruction relocations validate instruction alignment and low12 opcode
 and access widths. Byte-aligned data fields retain their own rules, including
-Mach-O GOT personality pointers; see [instruction-site validation](docs/elf.md#aarch64-instruction-relocations).
+Mach-O GOT personality pointers; see [instruction-site validation](docs/elf.md#aarch64-instruction-relocations). AArch64 ELF also supports absolute-symbol instruction replacement with [PATCHINST](docs/elf.md#aarch64-instruction-replacement).
 
 ## Library usage with typed adapters
 
