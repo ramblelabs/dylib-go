@@ -15,6 +15,13 @@ type SymbolRequirement struct {
 	Provider        string
 }
 
+func (r SymbolRequirement) validate() error {
+	if !textName(r.Symbol) || !contractName(r.Version) || r.Provider != "" && !contractName(r.Provider) {
+		return fmt.Errorf("module: invalid symbol requirement %q", r.Symbol)
+	}
+	return nil
+}
+
 // SymbolSelection contains a complete, exact dependency manifest and ordered
 // copies of the requests with Provider filled in. Repeated requests are retained,
 // while each provider is a manifest root once. Pass Manifest to Open, then use
@@ -48,8 +55,8 @@ func DiscoverSymbols(ctx context.Context, requests []SymbolRequirement, director
 	bindings := append([]SymbolRequirement(nil), requests...)
 	wanted := make(map[exportContract]bool)
 	for _, r := range bindings {
-		if !textName(r.Symbol) || !contractName(r.Version) || r.Provider != "" && !contractName(r.Provider) {
-			return SymbolSelection{}, fmt.Errorf("module: invalid symbol requirement %q", r.Symbol)
+		if err := r.validate(); err != nil {
+			return SymbolSelection{}, err
 		}
 		wanted[exportContract{r.Symbol, r.Version}] = true
 	}

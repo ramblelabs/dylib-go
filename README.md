@@ -216,6 +216,11 @@ Concurrent first uses share initialization; failed initialization is cached, and
 `Close` drains scopes/leases with cleanup retry. The [executed symbol-loading example](examples/modules/lazy.go)
 selects its catalog plan now and opens that whole graph on first use; see
 [lazy graph ownership](docs/lazy-modules.md).
+`module.NewLazySymbol` defers both provider selection and graph loading until
+that exact function/data symbol is first used through `WithSymbol`. Its generic
+Symbol supports ordinary adapters and external leases. See the
+[executed native/compiler-backed examples](examples/modules/lazy_symbol.go) and
+[per-symbol selection contract](docs/lazy-symbols.md).
 `module.OpenCompiled` prepares selected provider inputs with an explicit Go
 compiler callback and retains returned artifacts through native close and cleanup
 retry. See the [executed IR/bitcode example](examples/modules/compile.go) and
