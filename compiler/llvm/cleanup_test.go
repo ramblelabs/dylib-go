@@ -10,13 +10,16 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	dylib "github.com/ramblelabs/dylib-go"
+	"github.com/ramblelabs/dylib-go/module"
 )
 
 func TestCompilerFailureRetainsCleanupOwner(t *testing.T) {
 	if runtime.GOOS != "windows" && os.Geteuid() == 0 {
 		t.Skip("directory permission denial requires a non-root user")
 	}
-	for _, kind := range []string{"object", "archive", "modules"} {
+	for _, kind := range []string{"object", "archive", "modules", "module_graph"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := t.TempDir()
 			storage := filepath.Join(dir, "storage")
@@ -75,6 +78,19 @@ func TestCompilerFailureRetainsCleanupOwner(t *testing.T) {
 					failure = err
 					if object != nil {
 						owner = object
+					}
+				case "module_graph":
+					manifest := module.Manifest{Format: module.FormatVersion, Roots: []string{"app"}, Modules: []module.Module{{Name: "app", Version: "1", Files: []string{input}, Exports: []string{"add"}}}}
+					graph, err := module.OpenCompiled(ctx, dir, manifest, dylib.Options{}, func(ctx context.Context, path string) (module.InputArtifact, error) {
+						object, err := Compile(ctx, path, opts)
+						if object == nil {
+							return module.InputArtifact{}, err
+						}
+						return module.InputArtifact{Path: object.Path, Owner: object}, err
+					})
+					failure = err
+					if graph != nil {
+						owner = graph
 					}
 				}
 			}()
