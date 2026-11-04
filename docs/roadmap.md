@@ -211,7 +211,8 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Explicit non-void C++ conversion operators through exact result/member types, cv/ref qualifiers, virtual secondary-base dispatch, scalar/native-function/reference/owned results and native Go/llgo calls.
 - [x] Selected-class direct base metadata without preselected base names, including declaration order, contextual native types, effective access, virtual edges and native Go/llgo conversion checks.
 - [x] Bounded recursive public-base selection with explicit contextual-name resolution, deterministic declarations, compiler-validated transitive/virtual conversions, failed-query rollback and native Go/llgo composed views.
-- [ ] Whole-header class/lambda/function-template discovery, automatic ABI/ownership selection and automatic base-name resolution.
+- [x] Public base closure selection from explicit namespace class/alias catalogs, compiler-checked conversion reachability without contextual-name mapping, deterministic scope/budgets and native Go/llgo composed views, including cross-namespace and template aliases.
+- [ ] Whole-header class/lambda/function-template discovery, automatic ABI/ownership selection and base-name discovery beyond explicit namespace catalogs.
 - [x] Explicit retained session-to-session function/data symbol providers, transitive code leases and cleanup ordering without libffi.
 - [x] Explicit JSON/Go dependency manifests, exact declared ABI versions, multiple-root provider planning, retained import aliases, lazy archive export roots, ordered cleanup and failure rollback without libffi.
 - [x] Pure Go provider catalog discovery in explicit directories, exact declared versions, cross-catalog dependencies, absolute input paths, bounded metadata IO and native object/archive/library execution.

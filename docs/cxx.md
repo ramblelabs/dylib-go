@@ -519,6 +519,61 @@ direct llgo and dynamic callers execute shared virtual-base identity, composed
 views, virtual dispatch, nulls, constructor exceptions and destruction at `-O0`
 and `-O2`; metadata and facade compilation cover all eight targets.
 
+## Namespace-selected base closure
+
+`DiscoverNamespaceHierarchy(ctx, header, root, namespaces, options)` discovers
+accessible class names and aliases through `DiscoverClasses`, then selects bases
+using the same strict public/unambiguous compiler conversion checks as
+`DiscoverBases`. It needs no mapping from a contextual `BaseDeclaration.NativeType`
+to an accessible name. The root may belong to another namespace. Public catalog
+aliases can represent template specializations, nested types and classes declared
+in other namespaces. The [executed catalog example](../examples/cxx/namespace_hierarchy.go)
+keeps ABI signatures, ownership and C export names explicit.
+
+The root is first in `Classes`. For each visited class, all convertible candidate
+bases are appended in namespace/declaration order, including transitive bases;
+this order differs from the direct-edge breadth-first traversal of
+`DiscoverHierarchy`. Distinct aliases can remain separate selected names, while
+aliases of the root itself and conversions between equal native types are
+excluded. Overlapping namespace catalogs deduplicate exact names. Namespace
+aliases retain the caller's spelling and participate in the declared input order.
+
+Selection follows public conversions from every selected view. In an ambiguous
+nonvirtual diamond, the root can select its two intermediate bases; those views
+can then select their common base, even though the root-to-common-base conversion
+remains absent. A shared virtual diamond can expose the direct root conversion.
+Non-public direct-base metadata remains visible, but private/protected conversions
+do not select a candidate unless another selected public view can reach it.
+All returned conversions are independently verified together after selection.
+
+The query selects only types represented by the explicit namespace catalogs.
+Empty or unrelated catalogs can return just the validated root. Types outside
+that scope are not inferred, and no completeness claim extends beyond it.
+Use `DiscoverHierarchy` to provide other aliases, select contextual branches or
+skip declarations explicitly.
+
+| Bound | Maximum |
+| --- | --- |
+| Distinct namespace input names | 16 |
+| Distinct eligible catalog names across all namespaces | 256 |
+| Selected root/base names, including distinct aliases | 32 |
+| Direct base declarations across selected classes, including non-public edges | 256 |
+
+Compiler/header paths, target and flags are frozen before catalog discovery.
+Each namespace uses `DiscoverClasses`' query bounds. Each selected type uses
+`DiscoverMembers` and one bounded candidate-conversion query, followed by the
+existing selected-name conversion check. Source/AST/diagnostic limits and context
+cancellation apply throughout. Files, process environment and relative include
+flags must remain stable during discovery. Invalid inputs, compiler failures or
+exceeded bounds return nil rather than a partial graph.
+
+Tests cover namespace aliases and overlap/order, cross-namespace type aliases,
+template/nested bases, ambiguous/shared diamonds, conditional and target-specific
+inheritance, catalog scope, failure rollback and each count boundary. Metadata
+and facade compilation cover all eight targets. Generated cgo, direct llgo and
+dynamic callers execute composed views, shared virtual-base identity, dispatch,
+null outputs, constructor exceptions and destruction at `-O0`/`-O2`.
+
 ## Coverage and remaining work
 
 Go and llgo CI compile the base facade's C declarations and C++ source for all
@@ -547,7 +602,7 @@ abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
 Unrestricted whole-header declaration discovery,
-variadic constructors and class-value tails, automatic base-name resolution,
+variadic constructors and class-value tails, base-name discovery beyond explicit namespace catalogs,
 downcasts/crosscasts and C++ header discovery remain outside this manifest. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately
 qualified Linux/macOS subset; see [unwind scope](unwind.md). The generator

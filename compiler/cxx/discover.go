@@ -152,7 +152,7 @@ func baseProbes(names []string) (source, namespace string, probes []baseProbe, e
 				continue
 			}
 			alias := fmt.Sprintf("pair_%d_%d", i, j)
-			fmt.Fprintf(&body, "using %s = Answer<!__is_same(%s, %s) && __is_base_of(%s, %s) && __is_convertible_to(%s *, %s *)>;\n", alias, derived, base, base, derived, derived, base)
+			fmt.Fprintf(&body, "using %s = Answer<%s>;\n", alias, baseConversion(derived, base))
 			probes = append(probes, baseProbe{alias, i, j})
 		}
 	}
@@ -161,6 +161,12 @@ func baseProbes(names []string) (source, namespace string, probes []baseProbe, e
 		return "", "", nil, fmt.Errorf("cxx: base probes exceed source budget")
 	}
 	return body.String(), namespace, probes, nil
+}
+
+// Both selected-name and namespace-catalog queries require the same strict,
+// public, unambiguous conversion. Inputs are validated qualified C++ names.
+func baseConversion(derived, base string) string {
+	return fmt.Sprintf("!__is_same(%s, %s) && __is_base_of(%s, %s) && __is_convertible_to(%s *, %s *)", derived, base, base, derived, derived, base)
 }
 
 func decodeBases(data []byte, namespace string, names []string, probes []baseProbe) ([]BaseRelation, error) {

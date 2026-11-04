@@ -16,7 +16,7 @@ import (
 // Non-public declarations are retained in Classes but never passed to Resolve.
 type BaseNameResolver func(derived string, base BaseDeclaration) (string, error)
 
-// ClassHierarchy contains recursively selected class declarations in breadth-first
+// ClassHierarchy contains selected class declarations in the producing query's
 // order and compiler-verified public, unambiguous conversions among those names.
 // Conversions includes transitive/virtual relations; it is not a list of direct
 // edges. Canonically equal aliases have no conversion between them. Declarations
