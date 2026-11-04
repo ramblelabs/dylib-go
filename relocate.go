@@ -73,6 +73,9 @@ func (im *image) relocate(o *object, r relocation) error {
 	}
 	b := im.mem[sec.offset+r.offset : sec.offset+r.offset+uint64(w)]
 	p := im.base + uintptr(sec.offset+r.offset)
+	if o.info.Format == "ELF" && o.info.Arch == "arm64" && r.typ == elfARM64PatchInst {
+		return im.relocELFARM64Patch(o, r, b, p)
+	}
 	if o.info.Format == "ELF" && elfSizeRelocation(o, r) {
 		return im.relocELFSize(o, r, b)
 	}

@@ -183,3 +183,43 @@ These rules apply only when a weak reference remains undefined after selecting d
 CALL26's no-op behavior follows AAELF64 for a link without dynamic preemption. JUMP26 follows GNU ld's compatible extension; the ABI leaves that case unspecified. Conditional/test-bit branches use GNU ld's `P+A` rule, including a self-target for zero addends; LLVM lld instead selects `P+4+A`. The loader does not invent a return value for a missing weak function.
 
 Native Linux arm64 tests execute an unconditional weak C call with no provider, unselected/rooted archives, both object orders, an OS library, and an explicitly defined provider. A counter verifies that provided calls actually run. Separate native tests verify PREL16/32/64 and absolute pointer data with missing and selected weak definitions. Unit tests cover all implemented relative families, zero definitions, GOT ownership, addends, invalid opcodes, and alignment. The behavior follows [AAELF64 weak references](https://github.com/ARM-software/abi-aa/blob/main/aaelf64/aaelf64.rst#weak-references) and the [GNU AArch64 linker](https://sourceware.org/git/?p=binutils-gdb.git;a=blob;f=bfd/elfnn-aarch64.c).
+
+## AArch64 instruction replacement
+
+`R_AARCH64_PATCHINST` (316) writes the low 32 bits of `S+A` to a four-byte
+aligned instruction site when the selected symbol is an ELF `SHN_ABS`
+definition. The ELF64 sum must fit unsigned 32 bits. The previous instruction
+word does not contribute to the result, and zero is a valid absolute value.
+An undefined symbol, including a strong, weak or null symbol, leaves the word
+unchanged regardless of its addend.
+
+Ordinary archive selection still applies: a strong reference can extract an
+absolute definition; a weak reference alone does not extract a member. An
+explicit root can select that member. Local absolute symbols retain their own
+value. Section/common/TLS definitions and address-only native providers cannot
+supply this absolute metadata. `Session.Define` and OS-library symbol addresses
+are therefore not instruction constants.
+
+The loader preserves producer order and rejects a selected object's non-PATCHINST
+relocation following PATCHINST at the same section offset. A call relocation
+must run before its patch, even if the patch will replace the call with NOP;
+its target still needs ordinary resolution. Multiple patches apply in order,
+and an undefined later patch preserves the preceding result. An invalid unused
+archive member does not break a successful root selection. Bounds and alignment
+are checked even for undefined references; errors publish no image and permit a
+new link attempt.
+
+Portable tests cover arithmetic, absolute and undefined definitions, native
+address rejection, instruction sites and ordering. Native Linux arm64 Go/llgo
+tests execute ADD/NOP/SUB replacement, call-then-patch, repeated patches, both
+object orders, strong/weak archives, explicit roots and failed-link retry at
+`-O0` and `-O2`. The fixture builder changes only ABS32 relocation type fields
+to 316, allowing baseline assemblers without the new relocation spelling to
+produce the same ELF records. Independent LLVM lld 22/23 probes also verify
+actual PATCHINST linking; they are supplementary local controls, not an extra
+CI execution platform.
+
+These rules follow [AAELF64's Structure Protection relocations](https://github.com/ARM-software/abi-aa/blob/main/aaelf64/aaelf64.rst#relocations-for-structure-protection-extension).
+That ABI extension is currently Alpha. Supporting this static relocation does
+not implement the complete Structure Protection runtime, `R_AARCH64_FUNCINIT64`,
+IRELATIVE or GNU IFUNC.
