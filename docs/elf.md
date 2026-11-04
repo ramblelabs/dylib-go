@@ -87,6 +87,30 @@ The independently written implementation follows the [GNU x86-64 relocation defi
 
 ## AArch64 instruction relocations
 
+Instruction places must be four-byte aligned. ELF low12 relocations distinguish
+ADD/ADDS from unsigned-offset loads/stores, even for byte accesses whose scale is
+also zero. Load/store relocations require the declared datum width and a valid
+integer/SIMD encoding. Reserved signed-load and SIMD combinations are rejected.
+JUMP26 requires B and CALL26 requires BL. ELF GOT page/low12 instruction checks
+run before slot allocation, preserving the original word and GOT cursor on an
+invalid site. Page range checks, low12 addends and target alignment retain their
+existing behavior.
+
+The shared ADRP/branch checks and the Mach-O/COFF instruction paths also reject
+unaligned instruction places, including ARM64 COFF section-relative ADD/load
+fields. Data fields keep their byte-aligned contracts, including ELF ABS/PREL,
+COFF address/relative data and Mach-O unsigned pointers.
+
+Portable tests cover valid ADD/ADDS, signed and unsigned integer loads, SIMD
+8/16/32/64/128-bit loads/stores, prefetch, encoded-field replacement, invalid
+sites, reserved forms and byte-aligned data. Genuine Clang assembler/C output
+checks the relocation families at `-O0`/`-O2`. Native Linux arm64 Go/llgo tests
+execute those producers through objects, reversed objects, lazy archives and
+archive roots; verify copied scalar/vector data; compare a system-linked shared
+library; and retry after missing dependencies or selecting an invalid archive
+root. An unused invalid member remains unselected. These checks follow the
+[AAELF64 static instruction and load/store field contracts](https://github.com/ARM-software/abi-aa/blob/main/aaelf64/aaelf64.rst#static-aarch64-relocations).
+
 | Relocation | Instruction | Valid displacement |
 | --- | --- | --- |
 | ADR_PREL_LO21 | ADR | -1 MiB through +1 MiB minus one byte; byte offsets allowed |

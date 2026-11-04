@@ -3,6 +3,11 @@ package dylib
 import "fmt"
 
 func (im *image) relocCOFFARM64(r relocation, b []byte, s, p uintptr) error {
+	if r.typ >= 3 && r.typ <= 7 || r.typ == 15 || r.typ == 16 {
+		if err := armInstructionPlace(p); err != nil {
+			return err
+		}
+	}
 	if r.typ == 14 { // ADDR64
 		le.PutUint64(b, uint64(s)+le.Uint64(b))
 		return nil
@@ -29,7 +34,7 @@ func (im *image) relocCOFFARM64(r relocation, b []byte, s, p uintptr) error {
 		if err != nil {
 			return err
 		}
-		if r.typ == 6 && ins&0x5f000000 != 0x11000000 || r.typ == 7 && ins&0x3b000000 != 0x39000000 {
+		if r.typ == 6 && !armAddImmediate(ins) || r.typ == 7 && ins&0x3b000000 != 0x39000000 {
 			return fmt.Errorf("COFF page offset relocation has the wrong opcode")
 		}
 		return armPageOff(b, s+uintptr(((ins>>10)&0xfff)<<scale), scale)

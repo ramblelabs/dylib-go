@@ -62,6 +62,9 @@ Known native signatures can use caller-defined cgo or llgo adapters. For dynamic
 Mach-O and i386 COFF C names omit one leading linker underscore. Mach-O supports external `N_INDR` aliases, eager indirect pointer binding, and regenerated amd64/arm64 symbol stubs, including short and padded entries; see [Mach-O symbol rules](docs/macho.md). Windows vectorcall and i386 stdcall/fastcall decorations remain; vectorcall retains identifier-leading underscores. Use the matching ABI adapter; vectorcall requires a generated C bridge. C++ names still require their exact mangled linkage name.
 
 ELF amd64/i386 size relocations use the selected object definition's size, including merged common storage. Address-only host symbols cannot supply size metadata; see [ELF size rules](docs/elf.md).
+AArch64 instruction relocations validate instruction alignment and low12 opcode
+and access widths. Byte-aligned data fields retain their own rules, including
+Mach-O GOT personality pointers; see [instruction-site validation](docs/elf.md#aarch64-instruction-relocations).
 
 ## Library usage with typed adapters
 
