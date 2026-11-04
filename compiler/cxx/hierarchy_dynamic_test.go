@@ -21,6 +21,23 @@ func TestNativeDynamicHierarchyFacade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testDynamicHierarchy(t, facade)
+}
+
+func TestNativeDynamicNamespaceHierarchyFacade(t *testing.T) {
+	header, err := filepath.Abs("testdata/namespace_hierarchy.hpp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	facade, err := generateNamespaceHierarchy(t)(filepath.ToSlash(header))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testDynamicHierarchy(t, facade)
+}
+
+func testDynamicHierarchy(t *testing.T, facade *cxx.Facade) {
+	t.Helper()
 	source, metadata := prepare(t, facade)
 	for _, optimization := range []string{"-O0", "-O2"} {
 		t.Run(optimization, func(t *testing.T) {

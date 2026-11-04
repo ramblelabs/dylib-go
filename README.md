@@ -886,6 +886,10 @@ contextual, and conversion eligibility still needs compiler validation; see the
 and bounded Go traversal. It returns class metadata plus compiler-validated
 transitive/virtual conversions; see the [executed hierarchy example](examples/cxx/hierarchy.go)
 and [selection bounds](docs/cxx.md#recursive-hierarchy-selection).
+`DiscoverNamespaceHierarchy` selects a public base closure from class/alias
+catalogs in explicit namespaces, using compiler-checked conversions without a
+contextual-name resolver. See the [executed alias-catalog example](examples/cxx/namespace_hierarchy.go)
+and [scope and limits](docs/cxx.md#namespace-selected-base-closure).
 
 Explicit member manifests also support all twelve receiver cv/ref combinations
 through `Method.Const`, `Method.Volatile` and `Method.Ref`, including native
