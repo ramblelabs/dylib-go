@@ -100,6 +100,11 @@ func (im *image) relocate(o *object, r relocation) error {
 			sectionRelocation = r.typ == 8 || r.typ == 9 || r.typ == 10 || r.typ == 11 || r.typ == 13
 		}
 		if sectionRelocation {
+			if o.info.Arch == "arm64" && r.typ >= 9 && r.typ <= 11 {
+				if err := armInstructionPlace(p); err != nil {
+					return err
+				}
+			}
 			return im.relocCOFFSection(o, r, b)
 		}
 	}
@@ -217,7 +222,7 @@ func (im *image) relocCOFFSection(o *object, r relocation, b []byte) error {
 		value += uint64((ins>>10)&0xfff) << scale
 		return armPageOff(b, uintptr(value), scale)
 	}
-	if ins&0x5f000000 != 0x11000000 {
+	if !armAddImmediate(ins) {
 		return fmt.Errorf("SECREL ADD relocation requires ADD/ADDS")
 	}
 	shift := uint(0)
@@ -326,23 +331,20 @@ func (im *image) relocELF(o *object, r relocation, b []byte, s, p uintptr) error
 			return armADR(b, uintptr(v), p)
 		case 275, 276:
 			return armPageRelocation(b, uintptr(v), p, r.typ == 275)
-		case 277:
-			return armPageOff(b, uintptr(v), 0)
-		case 278:
-			return armPageOff(b, uintptr(v), 0)
-		case 284:
-			return armPageOff(b, uintptr(v), 1)
-		case 285:
-			return armPageOff(b, uintptr(v), 2)
-		case 286:
-			return armPageOff(b, uintptr(v), 3)
-		case 299:
-			return armPageOff(b, uintptr(v), 4)
+		case 277, 278, 284, 285, 286, 299:
+			scale, err := armELFPageOffInstruction(b, r.typ, p)
+			if err != nil {
+				return err
+			}
+			return armPageOff(b, uintptr(v), scale)
 		case 279: // TSTBR14
 			return armConditionalBranch(b, uintptr(v), p, 14)
 		case 280: // CONDBR19
 			return armConditionalBranch(b, uintptr(v), p, 19)
 		case 282, 283:
+			if err := armELFBranchInstruction(b, r.typ, p); err != nil {
+				return err
+			}
 			return im.armBranch(b, uintptr(v), p)
 		case 300, 301, 302, 303, 304, 305, 306:
 			g, e := im.elfARM64GOT(r, s)
@@ -365,17 +367,24 @@ func (im *image) relocELF(o *object, r relocation, b []byte, s, p uintptr) error
 			}
 			return armLiteralLoad(b, g, p)
 		case 311:
+			if err := armPageInstruction(b, p); err != nil {
+				return err
+			}
 			g, e := im.elfARM64GOT(r, s)
 			if e != nil {
 				return e
 			}
 			return armPage(b, g, p)
 		case 312:
+			scale, err := armELFPageOffInstruction(b, r.typ, p)
+			if err != nil {
+				return err
+			}
 			g, e := im.elfARM64GOT(r, s)
 			if e != nil {
 				return e
 			}
-			return armPageOff(b, g, 3)
+			return armPageOff(b, g, scale)
 		case 310, 313:
 			g, e := im.elfARM64GOT(r, s)
 			if e != nil {
@@ -466,6 +475,12 @@ func (im *image) relocMachO(o *object, r relocation, b []byte, s, p uintptr) err
 		return signed32(b, int64(s)+add-int64(p)-bias)
 	}
 	if o.info.Arch == "arm64" {
+		// POINTER_TO_GOT is byte-aligned PC-relative data, including in CIEs.
+		if r.typ >= 2 && r.typ <= 6 {
+			if err := armInstructionPlace(p); err != nil {
+				return err
+			}
+		}
 		if r.local {
 			return fmt.Errorf("ARM64 instruction relocations require external symbol indices")
 		}
@@ -591,10 +606,10 @@ func armPage(b []byte, target, p uintptr) error {
 }
 
 func armPageRelocation(b []byte, target, p uintptr, checkRange bool) error {
-	ins := le.Uint32(b)
-	if ins&0x9f000000 != 0x90000000 {
-		return fmt.Errorf("PAGE21 relocation does not reference ADRP")
+	if err := armPageInstruction(b, p); err != nil {
+		return err
 	}
+	ins := le.Uint32(b)
 	d := (int64(target&^0xfff) - int64(p&^0xfff)) >> 12
 	if checkRange && (d < -(1<<20) || d >= (1<<20)) {
 		return fmt.Errorf("ADRP page displacement overflow")
@@ -605,7 +620,7 @@ func armPageRelocation(b []byte, target, p uintptr, checkRange bool) error {
 	return nil
 }
 func armOffsetScale(ins uint32) (uint, error) {
-	if ins&0x5f000000 == 0x11000000 {
+	if armAddImmediate(ins) {
 		if ins&(1<<22) != 0 {
 			return 0, fmt.Errorf("shifted ADD not supported for PAGEOFF12")
 		}
@@ -613,8 +628,16 @@ func armOffsetScale(ins uint32) (uint, error) {
 	}
 	if ins&0x3b000000 == 0x39000000 {
 		scale := uint(ins >> 30)
-		if ins&(1<<26) != 0 && ins&(1<<23) != 0 {
-			scale = 4
+		opcode := (ins >> 22) & 3
+		if ins&(1<<26) != 0 {
+			if opcode >= 2 {
+				if scale != 0 {
+					return 0, fmt.Errorf("reserved SIMD unsigned-offset load/store")
+				}
+				scale = 4
+			}
+		} else if opcode == 3 && scale >= 2 {
+			return 0, fmt.Errorf("reserved integer unsigned-offset load/store")
 		}
 		return scale, nil
 	}
@@ -637,6 +660,9 @@ func armPageOff(b []byte, target uintptr, scale uint) error {
 	return nil
 }
 func (im *image) armBranch(b []byte, target, p uintptr) error {
+	if err := armInstructionPlace(p); err != nil {
+		return err
+	}
 	ins := le.Uint32(b)
 	if ins&0x7c000000 != 0x14000000 {
 		return fmt.Errorf("BRANCH26 does not reference B/BL")

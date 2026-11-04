@@ -78,6 +78,7 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Mach-O eager indirect pointer binding, local/absolute markers, and standard amd64/arm64 stubs with native scalar/large-record calls.
 - [x] ELF amd64 SIZE32/SIZE64 and i386 SIZE32, selected weak/strong/common sizes, archive dependencies, and native Linux calls.
 - [x] ELF AArch64 ADR, literal/GOT loads, conditional/test-bit branches, zero GOT addends and unchecked ADRP semantics, with native Linux calls.
+- [x] AArch64 low12 opcode/width and reserved-encoding validation, aligned page/branch/COFF/Mach-O instruction places, preserved byte-aligned data, and genuine compiler/system-linker plus native Go/llgo scalar/vector controls.
 - [x] ELF AArch64 MOVW_UABS/SABS/PREL, large-code C objects, ABS16/PREL16, signed-or-unsigned ABS32, and both null relocation encodings.
 - [x] ELF AArch64 unresolved weak relative values and call/jump NOPs, preserving selected zero definitions and external providers, with native Linux calls/data.
 - [x] Missing weak references cannot satisfy later strong references through cached zero addresses or COFF import slots; native ELF failure/retry tests cover both object orders and archives.
