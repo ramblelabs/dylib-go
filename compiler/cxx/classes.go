@@ -22,44 +22,16 @@ const maxDiscoveredClasses = 256
 // The caller selects returned names for DiscoverMembers and chooses ABI,
 // ownership and export names for Generate; discovery does not infer them.
 func DiscoverClasses(ctx context.Context, header, namespace string, opts DiscoveryOptions) ([]string, error) {
-	if len(namespace) > maxDiscoveryName || !qualifiedName(namespace) {
-		return nil, fmt.Errorf("cxx: invalid discovery namespace %q", namespace)
-	}
-	query, err := discoveryCommand(ctx, header, opts)
+	ast, ref, query, err := discoverNamespace(ctx, header, namespace, opts)
 	if err != nil {
 		return nil, err
 	}
-	parts := strings.Split(namespace, "::")
-	filter := parts[len(parts)-1]
-	var candidates []string
-	for attempt := 0; attempt < 2; attempt++ {
-		source, probe := namespaceProbe(namespace, filter)
-		data, err := query.run(ctx, source, filter)
-		if err != nil {
-			return nil, err
-		}
-		ast, err := decodeMemberAST(data, probe)
-		if err != nil {
-			return nil, err
-		}
-		ref, err := ast.selectedNamespace()
-		if err != nil {
-			return nil, err
-		}
-		var found bool
-		candidates, found, err = ast.classCandidates(namespace, ref.ID)
-		if err != nil {
-			return nil, err
-		}
-		if found {
-			break
-		}
-		// A namespace alias can have a different name from its target. Repeat
-		// with that name, resolving the probe and namespace IDs afresh together.
-		if attempt != 0 || !identifier(ref.Name) || len(ref.Name) > maxDiscoveryName {
-			return nil, fmt.Errorf("cxx: missing selected namespace definition")
-		}
-		filter = ref.Name
+	candidates, found, err := ast.classCandidates(namespace, ref.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fmt.Errorf("cxx: missing selected namespace definition")
 	}
 	if len(candidates) == 0 {
 		return nil, nil
