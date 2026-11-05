@@ -1,4 +1,4 @@
-# Generated C++ class facades
+# Generated C++ facades
 
 `compiler/cxx.Generate(header, classes)` renders a C header, C++17 source, and
 ordered C export names from an explicit manifest. Generation runs entirely in
@@ -612,3 +612,53 @@ details in their native compiler.
 References: [C++ member-pointer calls](https://eel.is/c++draft/expr.mptr.oper),
 [exception handlers and noexcept](https://eel.is/c++draft/except.handle), and
 [Windows exports](https://learn.microsoft.com/en-us/cpp/cpp/dllexport-dllimport).
+
+## Free functions
+
+`GenerateFunctions(header, []Function)` creates a facade for explicitly selected
+C++ functions, including overloads in the global scope or named namespaces.
+Static members can also be selected. `Function.Name` is a qualified native
+identifier without a leading `::`; `Symbol` is a distinct C export name. Operators,
+template expressions and non-static members require an explicit named wrapper
+or the class manifest. Native compilation checks an exact function pointer,
+including its argument/result types; equal byte widths alone do not select an
+overload.
+
+`Function.Signature`, `ObjectArgs`, `ObjectResult`, `FunctionArgs` and
+`FunctionResult` use the existing method transport contracts, without a receiver
+or receiver cv/ref qualifiers. Ordinary aggregate transports remain unsupported;
+named native class values/references/pointers use the explicit object contracts.
+A variadic selection describes its fixed prefix and one concrete scalar/pointer
+tail. The C export remains fixed, and the native compiler applies promotions.
+Results, output initialization, status codes, catchable exceptions and provider
+lifetimes use `Generate`'s existing rules. Discovery does not assign ownership.
+
+`DiscoverFunctions(ctx, header, namespace, DiscoveryOptions)` lists named
+free-function declarations in an explicit namespace and its named child/inline
+namespaces. Namespace aliases and linkage blocks are supported; included headers
+participate. Names use the caller's namespace spelling. Native prototypes and
+parameter types preserve their C++ declaration context rather than becoming ABI
+descriptors. Parameters report names and defaults; declarations report variadic,
+deleted and explicit static-storage status. Overloads and redeclarations retain
+declaration order. Repeated appearances of the same AST declaration are reported
+once. An empty namespace returns no declarations.
+
+The query excludes operators, function templates, implicit functions, class
+members, local declarations, anonymous namespaces and imported using
+names/directives. It performs at most two filtered Clang AST invocations and
+resolves namespace identity independently within each invocation. At most 256
+function declarations are reported; names have the existing 256-byte limit.
+The existing compiler/header/source/AST bounds and context cancellation apply.
+Errors return no partial catalog. Whole-header/template discovery and automatic
+ABI/ownership selection remain separate extensions.
+
+The [executed manifest](../examples/cxx/free_functions.go) selects global and
+namespace overloads, an internal function, a C-linkage function, a concrete
+variadic call, native function arguments/results and borrowed object references.
+Native Go/llgo tests execute typed cgo callers without libffi, direct llgo callers
+and optional dynamic calls at `-O0`/`-O2`, including exceptions, null validation,
+mutation and Go callback reentry. Portable tests inspect declarations and compile
+facades for all eight existing C/C++ producer targets. They also verify that the
+native compiler rejects incompatible prototypes, deleted functions and data
+members. This optional discovery uses Clang's [AST interface](https://clang.llvm.org/docs/IntroductionToTheClangAST.html);
+the Go implementation does not demangle or execute C++ metadata.

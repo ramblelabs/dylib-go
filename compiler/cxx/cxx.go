@@ -1,5 +1,5 @@
-// Package cxx generates explicit C facades for selected C++ classes. A matching
-// C++ compiler supplies class layout, member calls, virtual dispatch and runtime
+// Package cxx generates explicit C facades for selected C++ classes and functions.
+// A matching C++ compiler supplies class layout, calls, virtual dispatch and runtime
 // support. The generated C declarations can use compiler/clang's Go/llgo bindings.
 package cxx
 
@@ -11,6 +11,8 @@ import (
 
 	"github.com/ramblelabs/dylib-go/abi"
 )
+
+const maxFacadeFunctions = 256
 
 // Status values returned by every generated C entry.
 const (
@@ -126,6 +128,10 @@ const apiMacro = `#if defined(_WIN32)
 // Objects, output storage, provider images and asynchronous native activity stay
 // caller-owned. Use complete OS libraries for C++ runtime/exception registration.
 func Generate(header string, classes []Class) (*Facade, error) {
+	return generate(header, classes, false)
+}
+
+func generate(header string, classes []Class, allowGlobal bool) (*Facade, error) {
 	if header == "" || strings.ContainsAny(header, "\"\\\r\n\x00") {
 		return nil, fmt.Errorf("cxx: expected a quoted-include path using forward slashes")
 	}
@@ -139,7 +145,7 @@ func Generate(header string, classes []Class) (*Facade, error) {
 		if !identifier(symbol) || seen[symbol] {
 			return fmt.Errorf("cxx: invalid or duplicate C export %q", symbol)
 		}
-		if len(result.Functions) == 256 {
+		if len(result.Functions) == maxFacadeFunctions {
 			return fmt.Errorf("cxx: at most 256 C exports are supported")
 		}
 		seen[symbol] = true
@@ -153,7 +159,7 @@ func Generate(header string, classes []Class) (*Facade, error) {
 		return nil
 	}
 	for _, class := range classes {
-		if !qualifiedName(class.Name) {
+		if !qualifiedName(class.Name) && !(allowGlobal && class.Name == "") {
 			return nil, fmt.Errorf("cxx: invalid C++ type name %q", class.Name)
 		}
 		for _, constructor := range class.Constructors {

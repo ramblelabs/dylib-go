@@ -867,6 +867,12 @@ aliases. The [executed discovery example](examples/cxx/discover.go) assigns expo
 names and feeds these relations into the existing facade generator. Class/member
 selection and ownership remain explicit.
 
+`cxx.DiscoverFunctions` lists named free-function declarations in an explicit
+namespace, preserving overloads and native type spellings. `GenerateFunctions`
+creates fixed C exports from explicit scalar, object and function-pointer
+transports, including concrete variadic calls. See the [executed selections](examples/cxx/free_functions.go)
+and [free-function scope](docs/cxx.md#free-functions).
+
 `cxx.DiscoverMembers` also lists direct public constructors, destructors, methods
 and conversions for a selected class or alias. It preserves native C++ type
 spellings and reports overloads, default parameters, deleted/defaulted members
