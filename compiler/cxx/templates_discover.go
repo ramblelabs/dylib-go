@@ -17,7 +17,8 @@ const (
 
 // TemplateParameterDeclaration is descriptive metadata. NativeType is present
 // for value parameters; template parameters retain their nested parameter list.
-// Default values/expressions are not evaluated. Name can be empty.
+// Default values/expressions are not evaluated. Name can be empty, including
+// invented type parameters of a generic lambda's auto arguments.
 type TemplateParameterDeclaration struct {
 	Kind             TemplateParameterKind
 	Name, NativeType string
@@ -54,40 +55,15 @@ func (ast *memberAST) namespaceFunctionTemplates(namespace, id string) ([]Functi
 	var result []FunctionTemplateDeclaration
 	seen := make(map[string]FunctionTemplateDeclaration)
 	err := ast.walkNamespaceFunctions(namespace, id, "FunctionTemplateDecl", func(prefix string, n memberNode) error {
-		var primary *memberNode
-		// Clang visits the templated declaration first, then specialization
-		// definitions/references. A reference can have no TemplateArgument nodes.
-		for i := range n.Inner {
-			f := &n.Inner[i]
-			if f.Kind != "FunctionDecl" {
-				continue
-			}
-			if f.Name != n.Name || f.IsImplicit {
-				return fmt.Errorf("cxx: invalid primary function template")
-			}
-			for _, child := range f.Inner {
-				if child.Kind == "TemplateArgument" {
-					return fmt.Errorf("cxx: specialization precedes primary function template")
-				}
-			}
-			primary = f
-			break
-		}
-		if n.ID == "" || primary == nil {
-			return fmt.Errorf("cxx: missing primary function template")
+		primary, parameters, err := primaryTemplateDeclaration(n, "FunctionDecl")
+		if err != nil {
+			return err
 		}
 		f, err := functionDeclaration(prefix, *primary)
 		if err != nil {
 			return err
 		}
-		count := 0
-		parameters, err := templateParameters(n.Inner, &count)
-		if err != nil {
-			return err
-		}
-		if len(parameters) == 0 {
-			return fmt.Errorf("cxx: missing template parameters")
-		}
+
 		decl := FunctionTemplateDeclaration{Function: f, Parameters: parameters}
 		if old, ok := seen[n.ID]; ok {
 			if !reflect.DeepEqual(old, decl) {
@@ -108,6 +84,42 @@ func (ast *memberAST) namespaceFunctionTemplates(namespace, id string) ([]Functi
 	return result, nil
 }
 
+// Clang emits the primary templated declaration before its specializations and
+// ID-only references. Share this ordering contract across free/member catalogs.
+func primaryTemplateDeclaration(n memberNode, kinds ...string) (*memberNode, []TemplateParameterDeclaration, error) {
+	var primary *memberNode
+outer:
+	for i := range n.Inner {
+		f := &n.Inner[i]
+		for _, kind := range kinds {
+			if f.Kind == kind {
+				primary = f
+				break outer
+			}
+		}
+	}
+	if n.ID == "" || primary == nil {
+		return nil, nil, fmt.Errorf("cxx: missing primary function template")
+	}
+	if primary.Name != n.Name || primary.IsImplicit || primary.ID == "" {
+		return nil, nil, fmt.Errorf("cxx: invalid primary function template")
+	}
+	for _, child := range primary.Inner {
+		if child.Kind == "TemplateArgument" {
+			return nil, nil, fmt.Errorf("cxx: specialization precedes primary function template")
+		}
+	}
+	count := 0
+	parameters, err := templateParameters(n.Inner, &count)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(parameters) == 0 {
+		return nil, nil, fmt.Errorf("cxx: missing template parameters")
+	}
+	return primary, parameters, nil
+}
+
 func templateParameters(nodes []memberNode, count *int) ([]TemplateParameterDeclaration, error) {
 	var result []TemplateParameterDeclaration
 	for _, n := range nodes {
@@ -126,10 +138,17 @@ func templateParameters(nodes []memberNode, count *int) ([]TemplateParameterDecl
 			return nil, fmt.Errorf("cxx: template exceeds %d parameters", maxTemplateParameters)
 		}
 		*count += 1
-		if n.Name != "" && !identifier(n.Name) || kind == TemplateValueParameter && n.Type.QualType == "" || n.DefaultArg != nil && n.DefaultArg.Kind != "TemplateArgument" {
+		name := n.Name
+		// Generic-lambda auto arguments have invented type parameters, not
+		// source-level names. Do not depend on Clang's generated spelling
+		// (e.g. "value:auto" or "auto:1" for an unnamed argument).
+		if n.IsImplicit && kind == TemplateTypeParameter {
+			name = ""
+		}
+		if name != "" && !identifier(name) || kind == TemplateValueParameter && n.Type.QualType == "" || n.DefaultArg != nil && n.DefaultArg.Kind != "TemplateArgument" {
 			return nil, fmt.Errorf("cxx: invalid template parameter metadata")
 		}
-		p := TemplateParameterDeclaration{Kind: kind, Name: n.Name, NativeType: n.Type.QualType, Pack: n.IsParameterPack, HasDefault: n.DefaultArg != nil}
+		p := TemplateParameterDeclaration{Kind: kind, Name: name, NativeType: n.Type.QualType, Pack: n.IsParameterPack, HasDefault: n.DefaultArg != nil}
 		if kind == TemplateTemplateParameter {
 			var err error
 			p.Parameters, err = templateParameters(n.Inner, count)

@@ -879,6 +879,12 @@ arguments, including defaults, packs and generic lambda calls; nil and empty
 argument lists retain their distinct C++ overload behavior. See the
 [executed template selections](examples/cxx/templates.go) and [template scope](docs/cxx.md#function-templates).
 
+`cxx.DiscoverMemberTemplates` catalogs direct public member templates of a
+selected class or alias, including constructors, static methods, conversions
+and generic lambda call operators. It preserves template parameters and native
+qualifiers for explicit selection. See the [executed discovery example](examples/cxx/member_templates.go)
+and [member-template scope](docs/cxx.md#member-template-discovery).
+
 `cxx.DiscoverMembers` also lists direct public constructors, destructors, methods
 and conversions for a selected class or alias. It preserves native C++ type
 spellings and reports overloads, default parameters, deleted/defaulted members
