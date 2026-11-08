@@ -408,7 +408,8 @@ through their original declaration references, including forwarding factories,
 static/member factories and variables initialized by a factory. The closure's
 [call operator has public access](https://eel.is/c++draft/expr.prim.lambda.closure#5)
 even though its compiler record has no name.
-Generic lambda operators remain function templates and are excluded.
+Generic lambda operators remain function templates and are excluded from
+`DiscoverMembers`; use `DiscoverMemberTemplates` for their separate catalog.
 
 `NativeType` preserves the compiler's C++ spelling in its declaring class context,
 including qualifiers and calling convention attributes. Parameters retain names,
@@ -706,9 +707,9 @@ the [primary templated declaration before specializations](https://github.com/ll
 Discovery shares the existing namespace identity, alias, linkage and exclusion
 rules, at most two filtered compiler queries, IO/cancellation limits, and the
 256-declaration bound. Each declaration has at most 64 template parameters,
-including nested lists. Errors return no partial catalog. Member-template
-catalogs, whole-header discovery and automatic ABI/ownership selection remain
-separate extensions; this API does not instantiate every discovered template.
+including nested lists. Errors return no partial catalog. Whole-header discovery
+and automatic ABI/ownership selection remain separate extensions; this API does
+not instantiate every discovered template.
 
 The [executed selections](../examples/cxx/templates.go) cover partial/default
 arguments, empty-list overload selection, type and template-template arguments,
@@ -719,3 +720,43 @@ paths execute at `-O0` and `-O2`; dynamic calls also prove captured Go callback
 reentry. Portable metadata/compiler tests cover all eight existing producer
 targets. The selection model follows [C++ explicit template argument rules](https://eel.is/c++draft/temp.arg.explicit);
 ABI types, export names and ownership remain application choices.
+
+
+## Member-template discovery
+
+`DiscoverMemberTemplates(ctx, header, name, DiscoveryOptions)` returns ordered
+`CallableTemplateDeclaration` values for one complete class or alias. Each
+contains the primary `CallableDeclaration` and its ordered template parameters.
+Ordinary and static methods, constructors, conversions and generic lambda call
+operators participate. Deleted declarations remain visible for diagnostics.
+Non-public, implicit, inherited and nested-class members are excluded; select a
+nested class separately. Instantiated specializations are excluded, preserving
+primary overloads even when a header already instantiates them.
+
+The query shares `DiscoverMembers`' selected-definition identity, class/struct
+access rules, target/preprocessor options, IO/cancellation bounds and bounded
+anonymous-lambda lookup. Named class-template specializations are selectable
+through aliases. Factory and variable `decltype` aliases can select generic
+lambdas. Invented parameters of `auto` lambda arguments have an empty `Name`;
+parameter kind and pack status remain available. Each catalog has at most 256
+templates, and each declaration has at most 64 template parameters, including
+nested template-template lists. Failures return no partial catalog. Ordinary
+`DiscoverMembers` continues to exclude templates.
+
+The [executed discovery example](../examples/cxx/member_templates.go) selects
+constructor and conversion templates, const/lvalue and rvalue member overloads,
+static floating-point calls, template-template defaults, parameter packs,
+concrete native variadics, class-template aliases and a captured generic lambda.
+The native compiler validates the selected prototypes; discovery does not infer
+ABI types, cv/ref qualifiers, export names or ownership. Constructor and
+conversion templates use existing native deduction; constructors have no
+explicit template-argument syntax and explicit conversion-template arguments
+need a named native wrapper. Discovery reports descriptive native spellings,
+including dependent and compiler-generated conversion names, rather than
+independently usable C++ identifiers.
+
+Portable tests query and compile selections for all eight producer targets.
+Generated cgo, direct llgo and dynamic libffi callers execute at `-O0` and `-O2`,
+checking results, exception/null-output handling and object deletion. Native
+negative controls reject inaccessible/deleted members and incompatible types,
+qualifiers, static selection and template-argument counts.

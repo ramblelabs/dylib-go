@@ -74,6 +74,16 @@ type ClassDeclaration struct {
 // Queries use the original header path and DiscoveryOptions target/flags, with
 // the same IO and cancellation bounds as DiscoverBases. Errors return nil.
 func DiscoverMembers(ctx context.Context, header, name string, opts DiscoveryOptions) (*ClassDeclaration, error) {
+	record, err := discoverMemberDefinition(ctx, header, name, opts)
+	if err != nil {
+		return nil, err
+	}
+	return publicCallables(name, record)
+}
+
+// Both member catalogs locate the same complete definition, including aliases
+// and anonymous closure references, without comparing IDs across invocations.
+func discoverMemberDefinition(ctx context.Context, header, name string, opts DiscoveryOptions) (*memberNode, error) {
 	if len(name) > maxDiscoveryName || !qualifiedName(name) {
 		return nil, fmt.Errorf("cxx: invalid class name %q", name)
 	}
@@ -134,7 +144,7 @@ func DiscoverMembers(ctx context.Context, header, name string, opts DiscoveryOpt
 		if err != nil {
 			return nil, err
 		}
-		return publicCallables(name, definition)
+		return definition, nil
 	}
 	return nil, fmt.Errorf("cxx: selected anonymous record has no definition within %d declaration queries", maxAnonymousMemberQueries)
 }
@@ -363,7 +373,30 @@ func (ast *memberAST) definition(id string) (*memberNode, error) {
 }
 
 func publicCallables(name string, record *memberNode) (*ClassDeclaration, error) {
+	nodes, err := publicMemberDeclarations(record)
+	if err != nil {
+		return nil, err
+	}
 	result := &ClassDeclaration{Name: name, Abstract: record.DefinitionData.IsAbstract}
+	for _, base := range record.Bases {
+		if base.Type.QualType == "" || base.Access != "public" && base.Access != "protected" && base.Access != "private" {
+			return nil, fmt.Errorf("cxx: missing native base type or invalid inheritance access")
+		}
+		result.Bases = append(result.Bases, BaseDeclaration{NativeType: base.Type.QualType, Access: base.Access, Virtual: base.IsVirtual})
+	}
+	for _, n := range nodes {
+		call, ok, err := callableDeclaration(n)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			result.Callables = append(result.Callables, call)
+		}
+	}
+	return result, nil
+}
+
+func publicMemberDeclarations(record *memberNode) ([]memberNode, error) {
 	access := "private"
 	switch record.TagUsed {
 	case "struct":
@@ -375,12 +408,7 @@ func publicCallables(name string, record *memberNode) (*ClassDeclaration, error)
 	default:
 		return nil, fmt.Errorf("cxx: selected definition is not a class/struct")
 	}
-	for _, base := range record.Bases {
-		if base.Type.QualType == "" || base.Access != "public" && base.Access != "protected" && base.Access != "private" {
-			return nil, fmt.Errorf("cxx: missing native base type or invalid inheritance access")
-		}
-		result.Bases = append(result.Bases, BaseDeclaration{NativeType: base.Type.QualType, Access: base.Access, Virtual: base.IsVirtual})
-	}
+	var nodes []memberNode
 	for _, n := range record.Inner {
 		if n.Kind == "AccessSpecDecl" {
 			switch n.Access {
@@ -391,37 +419,40 @@ func publicCallables(name string, record *memberNode) (*ClassDeclaration, error)
 			}
 			continue
 		}
-		if access != "public" || n.IsImplicit {
-			continue
+		if access == "public" && !n.IsImplicit {
+			nodes = append(nodes, n)
 		}
-		var kind CallableKind
-		switch n.Kind {
-		case "CXXConstructorDecl":
-			kind = ConstructorDeclaration
-		case "CXXDestructorDecl":
-			kind = DestructorDeclaration
-		case "CXXMethodDecl":
-			kind = MethodDeclaration
-		case "CXXConversionDecl":
-			kind = ConversionDeclaration
-		default:
-			continue
-		}
-		if n.Name == "" || n.Type.QualType == "" {
-			return nil, fmt.Errorf("cxx: missing callable name or native type")
-		}
-		call := CallableDeclaration{Kind: kind, Name: n.Name, NativeType: n.Type.QualType,
-			Static: n.StorageClass == "static", Variadic: n.Variadic,
-			Deleted: n.ExplicitlyDeleted || n.ExplicitlyDefaulted == "deleted", Defaulted: n.ExplicitlyDefaulted != ""}
-		for _, p := range n.Inner {
-			if p.Kind == "ParmVarDecl" {
-				if p.Type.QualType == "" {
-					return nil, fmt.Errorf("cxx: missing native parameter type")
-				}
-				call.Parameters = append(call.Parameters, ParameterDeclaration{Name: p.Name, NativeType: p.Type.QualType, HasDefault: p.Init != ""})
-			}
-		}
-		result.Callables = append(result.Callables, call)
 	}
-	return result, nil
+	return nodes, nil
+}
+
+func callableDeclaration(n memberNode) (CallableDeclaration, bool, error) {
+	var kind CallableKind
+	switch n.Kind {
+	case "CXXConstructorDecl":
+		kind = ConstructorDeclaration
+	case "CXXDestructorDecl":
+		kind = DestructorDeclaration
+	case "CXXMethodDecl":
+		kind = MethodDeclaration
+	case "CXXConversionDecl":
+		kind = ConversionDeclaration
+	default:
+		return CallableDeclaration{}, false, nil
+	}
+	if n.Name == "" || n.Type.QualType == "" {
+		return CallableDeclaration{}, false, fmt.Errorf("cxx: missing callable name or native type")
+	}
+	call := CallableDeclaration{Kind: kind, Name: n.Name, NativeType: n.Type.QualType,
+		Static: n.StorageClass == "static", Variadic: n.Variadic,
+		Deleted: n.ExplicitlyDeleted || n.ExplicitlyDefaulted == "deleted", Defaulted: n.ExplicitlyDefaulted != ""}
+	for _, p := range n.Inner {
+		if p.Kind == "ParmVarDecl" {
+			if p.Type.QualType == "" {
+				return CallableDeclaration{}, false, fmt.Errorf("cxx: missing native parameter type")
+			}
+			call.Parameters = append(call.Parameters, ParameterDeclaration{Name: p.Name, NativeType: p.Type.QualType, HasDefault: p.Init != ""})
+		}
+	}
+	return call, true, nil
 }
