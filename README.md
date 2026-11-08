@@ -873,6 +873,12 @@ creates fixed C exports from explicit scalar, object and function-pointer
 transports, including concrete variadic calls. See the [executed selections](examples/cxx/free_functions.go)
 and [free-function scope](docs/cxx.md#free-functions).
 
+`cxx.DiscoverFunctionTemplates` also catalogs named namespace function templates.
+`Function.TemplateArgs` and `Method.TemplateArgs` select concrete type/value
+arguments, including defaults, packs and generic lambda calls; nil and empty
+argument lists retain their distinct C++ overload behavior. See the
+[executed template selections](examples/cxx/templates.go) and [template scope](docs/cxx.md#function-templates).
+
 `cxx.DiscoverMembers` also lists direct public constructors, destructors, methods
 and conversions for a selected class or alias. It preserves native C++ type
 spellings and reports overloads, default parameters, deleted/defaulted members

@@ -618,9 +618,9 @@ References: [C++ member-pointer calls](https://eel.is/c++draft/expr.mptr.oper),
 `GenerateFunctions(header, []Function)` creates a facade for explicitly selected
 C++ functions, including overloads in the global scope or named namespaces.
 Static members can also be selected. `Function.Name` is a qualified native
-identifier without a leading `::`; `Symbol` is a distinct C export name. Operators,
-template expressions and non-static members require an explicit named wrapper
-or the class manifest. Native compilation checks an exact function pointer,
+identifier without a leading `::`; `Symbol` is a distinct C export name. Operators and non-static members require an explicit named wrapper or the
+class manifest. `TemplateArgs` selects the bounded template forms below; template
+expressions are not accepted in `Name`. Native compilation checks an exact function pointer,
 including its argument/result types; equal byte widths alone do not select an
 overload.
 
@@ -662,3 +662,60 @@ facades for all eight existing C/C++ producer targets. They also verify that the
 native compiler rejects incompatible prototypes, deleted functions and data
 members. This optional discovery uses Clang's [AST interface](https://clang.llvm.org/docs/IntroductionToTheClangAST.html);
 the Go implementation does not demangle or execute C++ metadata.
+
+## Function templates
+
+`Function.TemplateArgs` and `Method.TemplateArgs` select explicit C++17 template
+arguments for free functions, static/ordinary members and generic lambda call
+operators. `nil` retains ordinary exact-pointer selection and compiler deduction.
+A non-nil empty slice emits `<>`, which selects the template overload set even
+when a non-template overload has the same physical prototype. JSON `null` and
+`[]` retain that distinction. Native compilation handles defaults, partial
+deduction, packs, substitution and overload resolution.
+
+Each list accepts at most 16 arguments of at most 256 bytes. Supported arguments
+are qualified identifiers, single-token builtin type names, `true`, `false`,
+`nullptr`, and decimal integer literals with optional `U`, `L`, `LL`, `UL` or
+`ULL` suffixes (case-insensitive). Identifiers can name type aliases, template
+names or constexpr values; the native compiler checks their meaning. Use aliases
+for compound, pointer/reference and template-specialization types, and named
+constexpr values for expressions. Raw expressions, address operators, nested
+`<...>` syntax, leading scope qualifiers, whitespace, hex/binary/octal literals
+and negative unsigned literals are rejected before source generation.
+
+Integer magnitudes must fit unsigned 64 bits; negative and unsuffixed/signed
+values must fit signed 64 bits. The signed minimum is rendered as a portable
+64-bit constant expression because its positive magnitude has no standard signed
+literal type. Other suffixes retain the native compiler's C++ literal rules,
+including target-dependent `long`. These strings do not choose a Go ABI.
+Constructors have no explicit template-argument syntax; their existing native
+overload resolution is unchanged. Explicit conversion-template arguments require
+a named native wrapper. Ordinary member cv/ref and object/function-pointer
+transport contracts still apply.
+
+`DiscoverFunctionTemplates(ctx, header, namespace, DiscoveryOptions)` is a
+separate opt-in namespace catalog. Ordinary `DiscoverFunctions` continues to
+exclude function-template declarations. Results preserve overloads and
+redeclarations, exposing each primary native function prototype plus ordered
+`TemplateParameterDeclaration` values: type, value or template kind, optional
+name, native value type, pack/default flags and nested template-template lists.
+Defaults are reported without evaluating or reconstructing their expressions.
+Instantiated definitions/references are excluded from the catalog; Clang emits
+the [primary templated declaration before specializations](https://github.com/llvm/llvm-project/blob/llvmorg-22.1.8/clang/include/clang/AST/ASTNodeTraverser.h).
+
+Discovery shares the existing namespace identity, alias, linkage and exclusion
+rules, at most two filtered compiler queries, IO/cancellation limits, and the
+256-declaration bound. Each declaration has at most 64 template parameters,
+including nested lists. Errors return no partial catalog. Member-template
+catalogs, whole-header discovery and automatic ABI/ownership selection remain
+separate extensions; this API does not instantiate every discovered template.
+
+The [executed selections](../examples/cxx/templates.go) cover partial/default
+arguments, empty-list overload selection, type and template-template arguments,
+parameter packs, signed/unsigned limits, pointer aliases, borrowed class
+references, function-pointer factories, native ellipses, const/ref member calls
+and a generic lambda's call operator. Typed cgo, direct llgo and dynamic libffi
+paths execute at `-O0` and `-O2`; dynamic calls also prove captured Go callback
+reentry. Portable metadata/compiler tests cover all eight existing producer
+targets. The selection model follows [C++ explicit template argument rules](https://eel.is/c++draft/temp.arg.explicit);
+ABI types, export names and ownership remain application choices.
