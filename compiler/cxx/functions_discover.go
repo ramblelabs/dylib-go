@@ -39,18 +39,61 @@ func DiscoverFunctions(ctx context.Context, header, namespace string, opts Disco
 func (ast *memberAST) namespaceFunctions(namespace, id string) ([]FunctionDeclaration, error) {
 	var result []FunctionDeclaration
 	seen := make(map[string]FunctionDeclaration)
+	err := ast.walkNamespaceFunctions(namespace, id, "FunctionDecl", func(prefix string, n memberNode) error {
+		f, err := functionDeclaration(prefix, n)
+		if err != nil {
+			return err
+		}
+		if old, ok := seen[n.ID]; ok {
+			if !reflect.DeepEqual(old, f) {
+				return fmt.Errorf("cxx: conflicting function declaration identity")
+			}
+			return nil
+		}
+		if len(result) == maxFacadeFunctions {
+			return fmt.Errorf("cxx: namespace exceeds %d function declarations", maxFacadeFunctions)
+		}
+		seen[n.ID] = f
+		result = append(result, f)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func functionDeclaration(prefix string, n memberNode) (FunctionDeclaration, error) {
+	name := prefix + "::" + n.Name
+	if len(name) > maxDiscoveryName || n.ID == "" || n.Type.QualType == "" {
+		return FunctionDeclaration{}, fmt.Errorf("cxx: invalid or excessive function declaration")
+	}
+	f := FunctionDeclaration{Name: name, NativeType: n.Type.QualType, Variadic: n.Variadic, Deleted: n.ExplicitlyDeleted, Internal: n.StorageClass == "static"}
+	for _, p := range n.Inner {
+		if p.Kind == "ParmVarDecl" {
+			if p.Type.QualType == "" {
+				return FunctionDeclaration{}, fmt.Errorf("cxx: missing native function parameter type")
+			}
+			f.Parameters = append(f.Parameters, ParameterDeclaration{Name: p.Name, NativeType: p.Type.QualType, HasDefault: p.Init != ""})
+		}
+	}
+	return f, nil
+}
+
+// Both catalogs use the same namespace identity, linkage and exclusion rules.
+func (ast *memberAST) walkNamespaceFunctions(namespace, id, kind string, visit func(string, memberNode) error) error {
 	var walk func([]memberNode, string) error
 	walk = func(nodes []memberNode, prefix string) error {
 		for _, n := range nodes {
 			if n.IsImplicit {
 				continue
 			}
-			switch n.Kind {
-			case "LinkageSpecDecl":
+			switch {
+			case n.Kind == "LinkageSpecDecl":
 				if err := walk(n.Inner, prefix); err != nil {
 					return err
 				}
-			case "NamespaceDecl":
+			case n.Kind == "NamespaceDecl":
 				if n.Name == "" {
 					continue
 				}
@@ -60,37 +103,16 @@ func (ast *memberAST) namespaceFunctions(namespace, id string) ([]FunctionDeclar
 				if err := walk(n.Inner, prefix+"::"+n.Name); err != nil {
 					return err
 				}
-			case "FunctionDecl":
+			case n.Kind == kind:
 				if !identifier(n.Name) {
 					if strings.HasPrefix(n.Name, "operator") {
 						continue
 					}
 					return fmt.Errorf("cxx: invalid function name")
 				}
-				name := prefix + "::" + n.Name
-				if len(name) > maxDiscoveryName || n.ID == "" || n.Type.QualType == "" {
-					return fmt.Errorf("cxx: invalid or excessive function declaration")
+				if err := visit(prefix, n); err != nil {
+					return err
 				}
-				f := FunctionDeclaration{Name: name, NativeType: n.Type.QualType, Variadic: n.Variadic, Deleted: n.ExplicitlyDeleted, Internal: n.StorageClass == "static"}
-				for _, p := range n.Inner {
-					if p.Kind == "ParmVarDecl" {
-						if p.Type.QualType == "" {
-							return fmt.Errorf("cxx: missing native function parameter type")
-						}
-						f.Parameters = append(f.Parameters, ParameterDeclaration{Name: p.Name, NativeType: p.Type.QualType, HasDefault: p.Init != ""})
-					}
-				}
-				if old, ok := seen[n.ID]; ok {
-					if !reflect.DeepEqual(old, f) {
-						return fmt.Errorf("cxx: conflicting function declaration identity")
-					}
-					continue
-				}
-				if len(result) == maxFacadeFunctions {
-					return fmt.Errorf("cxx: namespace exceeds %d function declarations", maxFacadeFunctions)
-				}
-				seen[n.ID] = f
-				result = append(result, f)
 			}
 		}
 		return nil
@@ -98,9 +120,9 @@ func (ast *memberAST) namespaceFunctions(namespace, id string) ([]FunctionDeclar
 	for _, n := range ast.namespaces {
 		if n.ID == id || n.OriginalNamespace != nil && n.OriginalNamespace.ID == id {
 			if err := walk(n.Inner, namespace); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
-	return result, nil
+	return nil
 }

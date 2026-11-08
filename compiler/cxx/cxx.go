@@ -62,7 +62,11 @@ const (
 // conversion operators are supported; ABI, ownership and receiver qualifiers
 // use the same contracts as ordinary methods.
 type Method struct {
-	Name, Symbol   string
+	Name, Symbol string
+	// TemplateArgs is nil for ordinary selection; a non-nil empty slice emits
+	// <> to select a template even when a non-template overload is visible.
+	// Arguments use Function.TemplateArgs' bounded identifier/literal grammar.
+	TemplateArgs   []string
 	Signature      abi.Signature
 	Const, Static  bool
 	Volatile       bool
@@ -183,6 +187,13 @@ return DYLIB_CXX_SUCCESS;
 		}
 		for _, method := range class.Methods {
 			callOperator := method.Name == "operator()"
+			template, err := templateArguments(method.TemplateArgs)
+			if err != nil || method.Conversion && method.TemplateArgs != nil {
+				if err == nil {
+					err = fmt.Errorf("conversion template arguments require a named native wrapper")
+				}
+				return nil, fmt.Errorf("cxx: method %s: %w", method.Name, err)
+			}
 			if method.Conversion && (method.Name != "" || method.Static || len(method.Signature.Args) != 0 || method.Signature.Result == abi.Void) {
 				return nil, fmt.Errorf("cxx: conversion %q requires an unnamed non-static member, no arguments and a non-void result", method.Symbol)
 			}
@@ -272,6 +283,7 @@ return DYLIB_CXX_SUCCESS;
 				}
 			}
 			selector := method.Name
+			selector += template
 			if method.Conversion {
 				selector = "operator " + nativeResult
 			}

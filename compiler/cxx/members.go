@@ -155,6 +155,8 @@ type memberBase struct {
 }
 
 type memberNode struct {
+	DefaultArg                                    *memberReference `json:"defaultArg,omitempty"`
+	IsParameterPack                               bool             `json:"isParameterPack,omitempty"`
 	ReferencedDecl                                *memberReference
 	OriginalNamespace, NominatedNamespace         *memberReference
 	ID, Kind, Name, PreviousDecl, TagUsed, Access string
