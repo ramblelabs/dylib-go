@@ -33,6 +33,10 @@ func DiscoverClasses(ctx context.Context, header, namespace string, opts Discove
 	if !found {
 		return nil, fmt.Errorf("cxx: missing selected namespace definition")
 	}
+	return query.eligibleClasses(ctx, candidates)
+}
+
+func (query *discoveryCompiler) eligibleClasses(ctx context.Context, candidates []string) ([]string, error) {
 	if len(candidates) == 0 {
 		return nil, nil
 	}
@@ -119,7 +123,7 @@ func (ast *memberAST) classCandidates(namespace, id string) ([]string, bool, err
 			if n.Name == "" {
 				continue
 			}
-			name := prefix + "::" + n.Name
+			name := qualifiedDeclarationName(prefix, n.Name)
 			switch n.Kind {
 			case "NamespaceDecl":
 				if err := walk(n.Inner, name, "public"); err != nil {
@@ -148,12 +152,10 @@ func (ast *memberAST) classCandidates(namespace, id string) ([]string, bool, err
 		return nil
 	}
 	found := false
-	for _, n := range ast.namespaces {
-		if n.ID == id || n.OriginalNamespace != nil && n.OriginalNamespace.ID == id {
-			found = true
-			if err := walk(n.Inner, namespace, "public"); err != nil {
-				return nil, false, err
-			}
+	for _, n := range ast.catalogRoots(namespace, id) {
+		found = true
+		if err := walk(n.Inner, namespace, "public"); err != nil {
+			return nil, false, err
 		}
 	}
 	return names, found, nil

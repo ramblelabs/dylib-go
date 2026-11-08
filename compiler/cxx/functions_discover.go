@@ -8,7 +8,8 @@ import (
 )
 
 // FunctionDeclaration describes a named namespace function declaration. Name
-// uses the caller's namespace spelling; NativeType and parameter types retain
+// uses the selected namespace spelling, or an unprefixed global name in a header
+// catalog. NativeType and parameter types retain
 // their native C++ declaration context. They are descriptive metadata, not ABI
 // descriptors. Internal reports an explicit static storage class.
 type FunctionDeclaration struct {
@@ -64,7 +65,7 @@ func (ast *memberAST) namespaceFunctions(namespace, id string) ([]FunctionDeclar
 }
 
 func functionDeclaration(prefix string, n memberNode) (FunctionDeclaration, error) {
-	name := prefix + "::" + n.Name
+	name := qualifiedDeclarationName(prefix, n.Name)
 	if len(name) > maxDiscoveryName || n.ID == "" || n.Type.QualType == "" {
 		return FunctionDeclaration{}, fmt.Errorf("cxx: invalid or excessive function declaration")
 	}
@@ -97,10 +98,10 @@ func (ast *memberAST) walkNamespaceFunctions(namespace, id, kind string, visit f
 				if n.Name == "" {
 					continue
 				}
-				if !identifier(n.Name) || len(prefix)+2+len(n.Name) > maxDiscoveryName {
+				if !identifier(n.Name) || len(qualifiedDeclarationName(prefix, n.Name)) > maxDiscoveryName {
 					return fmt.Errorf("cxx: invalid or excessive function namespace")
 				}
-				if err := walk(n.Inner, prefix+"::"+n.Name); err != nil {
+				if err := walk(n.Inner, qualifiedDeclarationName(prefix, n.Name)); err != nil {
 					return err
 				}
 			case n.Kind == kind:
@@ -117,11 +118,9 @@ func (ast *memberAST) walkNamespaceFunctions(namespace, id, kind string, visit f
 		}
 		return nil
 	}
-	for _, n := range ast.namespaces {
-		if n.ID == id || n.OriginalNamespace != nil && n.OriginalNamespace.ID == id {
-			if err := walk(n.Inner, namespace); err != nil {
-				return err
-			}
+	for _, n := range ast.catalogRoots(namespace, id) {
+		if err := walk(n.Inner, namespace); err != nil {
+			return err
 		}
 	}
 	return nil
