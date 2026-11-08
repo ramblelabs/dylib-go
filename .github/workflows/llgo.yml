@@ -33,7 +33,8 @@ jobs:
         shell: bash
     env:
       CGO_ENABLED: '1'
-      LLGO_TEST_TIMEOUT: '35m'
+      # Intel macOS needs the complete C++ generator suite in both backend modes.
+      LLGO_TEST_TIMEOUT: ${{ matrix.target == 'darwin-amd64' && '60m' || '35m' }}
       DYLIB_TEST_REQUIRE_NATIVE: ${{ matrix.mode == 'native' && '1' || '0' }}
       DYLIB_TEST_REQUIRE_SHARED: '1'
       DYLIB_TEST_REQUIRE_TOOLS: '1'
