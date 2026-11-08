@@ -893,6 +893,11 @@ selects declarations and generates a callable C facade. ABI signatures, ownershi
 and export names remain explicit; discovery does not make unsupported C++ types
 directly callable.
 
+`cxx.DiscoverHeader` catalogs global and named-namespace classes/aliases, ordinary
+functions and function templates together, without a preselected namespace.
+Included headers participate within explicit query and result bounds. See the
+[executed header selections](examples/cxx/header.go) and [header discovery scope](docs/cxx.md#header-discovery).
+
 `cxx.DiscoverClasses` can first list complete accessible classes and aliases in
 an explicit namespace, including named child namespaces, public nested types,
 template-specialization aliases and lambda aliases. Compiler checks filter out

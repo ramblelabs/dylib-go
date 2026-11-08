@@ -365,6 +365,44 @@ original handle remains caller-owned. Existing exception, null, output clearing
 and occupied-slot rules apply. Native cgo/direct llgo and dynamic libffi tests
 execute `-O0`/`-O2` libraries and verify ownership counts after destruction.
 
+## Header discovery
+
+`DiscoverHeader(ctx, header, DiscoveryOptions)` returns a `HeaderDeclaration`
+containing accessible `Classes`, ordinary `Functions` and primary
+`FunctionTemplates` from the complete C++17 translation unit. Global names have
+no leading `::`; declarations in named/inline namespaces use qualified names.
+Included headers participate, preserving relative includes, target and
+preprocessor options. Each catalog retains its declaration order, overloads,
+redeclarations and existing class/function/template eligibility rules.
+
+Public nested class names, class aliases, named class-template specializations
+and lambda aliases participate. Members, anonymous namespaces, local types and
+unselected class templates are excluded. Namespace aliases and using imports do
+not duplicate names; declarations retain the namespace in which they occur.
+`DiscoverMembers` and `DiscoverMemberTemplates` can query selected returned class
+names, while `Generate`/`GenerateFunctions` still require explicit ABI types,
+qualifiers, template arguments, ownership and export names.
+
+The implementation reuses the existing bounded AST decoder, namespace walkers,
+primary-template parser and compiler class-eligibility probes. It performs one
+complete AST query and at most one class-eligibility query, with no declaration
+IDs compared across compiler processes. Each catalog has at most 256 entries;
+class candidates, including aliases that prove ineligible, count before the
+eligibility query. Template declarations retain the 64-parameter nested bound.
+Names, header IO, AST bytes/nodes/depth and cancellation use the existing limits.
+Any error returns nil, and an empty header returns an empty catalog. Large
+included/system headers can exceed these bounds; use the namespace APIs to
+narrow such inputs. This does not promise unrestricted standard-library scans.
+
+The [executed selection example](../examples/cxx/header.go) discovers global
+and qualified overloads, static/internal and C-linkage functions, templates,
+class aliases and a captured generic lambda, then generates concrete facades.
+Eight-target tests cover declarations, preprocessing, relative includes and
+facade compilation. Generated cgo, direct llgo and dynamic libffi callers execute
+both function and class selections at `-O0` and `-O2`, including floating-point
+calls, packs, exceptions, null handling and consuming deletion. Ordinary
+namespace APIs keep their existing selection behavior.
+
 ## Namespace class discovery
 
 `DiscoverClasses(ctx, header, namespace, DiscoveryOptions)` lists accessible
@@ -602,9 +640,10 @@ specializations, access sections, overloads, operators, default/deleted members,
 abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
-Unrestricted whole-header declaration discovery,
-variadic constructors and class-value tails, base-name discovery beyond explicit namespace catalogs,
-downcasts/crosscasts and C++ header discovery remain outside this manifest. These
+Unrestricted declaration discovery, variadic constructors and class-value tails,
+base-name discovery beyond explicit catalogs and downcasts/crosscasts remain
+outside this manifest. Bounded header catalogs are available through
+`DiscoverHeader`. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately
 qualified Linux/macOS subset; see [unwind scope](unwind.md). The generator
 complements llcppg and ABIBridge while keeping C++ ABI
@@ -650,8 +689,9 @@ names/directives. It performs at most two filtered Clang AST invocations and
 resolves namespace identity independently within each invocation. At most 256
 function declarations are reported; names have the existing 256-byte limit.
 The existing compiler/header/source/AST bounds and context cancellation apply.
-Errors return no partial catalog. Whole-header/template discovery and automatic
-ABI/ownership selection remain separate extensions.
+Errors return no partial catalog. `DiscoverHeader` and the template catalog APIs
+provide broader bounded discovery; automatic ABI/ownership selection remains a
+separate extension.
 
 The [executed manifest](../examples/cxx/free_functions.go) selects global and
 namespace overloads, an internal function, a C-linkage function, a concrete
@@ -707,9 +747,10 @@ the [primary templated declaration before specializations](https://github.com/ll
 Discovery shares the existing namespace identity, alias, linkage and exclusion
 rules, at most two filtered compiler queries, IO/cancellation limits, and the
 256-declaration bound. Each declaration has at most 64 template parameters,
-including nested lists. Errors return no partial catalog. Whole-header discovery
-and automatic ABI/ownership selection remain separate extensions; this API does
-not instantiate every discovered template.
+including nested lists. Errors return no partial catalog. `DiscoverHeader` also
+finds global/named-namespace templates without a preselected namespace. Automatic
+ABI/ownership selection remains separate; these APIs do not instantiate every
+discovered template.
 
 The [executed selections](../examples/cxx/templates.go) cover partial/default
 arguments, empty-list overload selection, type and template-template arguments,

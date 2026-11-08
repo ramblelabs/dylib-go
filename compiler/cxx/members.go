@@ -181,6 +181,7 @@ type memberNode struct {
 }
 
 type memberAST struct {
+	unit       *memberNode
 	probe      *memberNode
 	records    map[string]*memberNode
 	references []string
@@ -196,6 +197,14 @@ const (
 var errMissingMemberDefinition = errors.New("cxx: missing complete selected definition")
 
 func decodeMemberAST(data []byte, namespace string) (*memberAST, error) {
+	return decodeDeclarationAST(data, namespace, false)
+}
+
+func decodeHeaderAST(data []byte) (*memberAST, error) {
+	return decodeDeclarationAST(data, "", true)
+}
+
+func decodeDeclarationAST(data []byte, namespace string, whole bool) (*memberAST, error) {
 	if len(data) > maxDiscoveryAST {
 		return nil, fmt.Errorf("cxx: member AST exceeds byte budget")
 	}
@@ -233,11 +242,14 @@ func decodeMemberAST(data []byte, namespace string) (*memberAST, error) {
 		if depth > maxMemberDepth || nodes > maxMemberNodes {
 			return fmt.Errorf("cxx: member AST exceeds node/depth budget")
 		}
-		if n.Kind == "NamespaceDecl" && n.Name == namespace {
+		if !whole && n.Kind == "NamespaceDecl" && n.Name == namespace {
 			if ast.probe != nil {
 				return fmt.Errorf("cxx: duplicate member query namespace")
 			}
 			ast.probe = n
+		}
+		if whole && n.Kind == "TranslationUnitDecl" && depth != 0 {
+			return fmt.Errorf("cxx: nested translation unit")
 		}
 		if n.Kind == "NamespaceDecl" {
 			ast.namespaces = append(ast.namespaces, n)
@@ -287,11 +299,21 @@ func decodeMemberAST(data []byte, namespace string) (*memberAST, error) {
 			}
 			return nil, fmt.Errorf("cxx: invalid member AST: %w", err)
 		}
+		if whole {
+			if ast.unit != nil || n.Kind != "TranslationUnitDecl" || n.ID == "" {
+				return nil, fmt.Errorf("cxx: expected one identified translation unit")
+			}
+			ast.unit = n
+		}
 		if err := visit(n, 0); err != nil {
 			return nil, err
 		}
 	}
-	if ast.probe == nil {
+	if whole {
+		if ast.unit == nil {
+			return nil, fmt.Errorf("cxx: missing translation unit")
+		}
+	} else if ast.probe == nil {
 		return nil, fmt.Errorf("cxx: missing member query namespace")
 	}
 	return ast, nil
