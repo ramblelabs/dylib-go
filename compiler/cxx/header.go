@@ -30,11 +30,7 @@ func DiscoverHeader(ctx context.Context, header string, opts DiscoveryOptions) (
 	if err != nil {
 		return nil, err
 	}
-	data, err := query.run(ctx, "", "")
-	if err != nil {
-		return nil, err
-	}
-	ast, err := decodeHeaderAST(data)
+	ast, err := query.headerAST(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -80,4 +76,13 @@ func (ast *memberAST) catalogRoots(namespace, id string) []*memberNode {
 		}
 	}
 	return roots
+}
+
+// Header catalogs share one complete AST query and the same bounded decoder.
+func (query *discoveryCompiler) headerAST(ctx context.Context) (*memberAST, error) {
+	data, err := query.run(ctx, "", "")
+	if err != nil {
+		return nil, err
+	}
+	return decodeHeaderAST(data)
 }
