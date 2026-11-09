@@ -613,6 +613,41 @@ and facade compilation cover all eight targets. Generated cgo, direct llgo and
 dynamic callers execute composed views, shared virtual-base identity, dispatch,
 null outputs, constructor exceptions and destruction at `-O0`/`-O2`.
 
+## Header-selected base closure
+
+`DiscoverHeaderHierarchy(ctx, header, root, options)` obtains candidate base
+names from the complete header's class catalog, without namespace inputs or a
+contextual-name resolver. Global names, named namespaces, public nested types,
+class-template aliases and included headers follow `DiscoverHeader`'s class
+eligibility rules. Ordinary-function and function-template declaration counts do
+not limit this class-only query. Their AST bytes/nodes still count toward the
+shared complete-AST bounds, so large headers may require namespace selection.
+
+The implementation reuses namespace hierarchy traversal and conversion probes.
+The explicit root comes first; convertible candidates follow header declaration
+order, including transitive bases and distinct aliases. Canonically equal root
+aliases are excluded. Ambiguous root conversions remain absent, while selected
+intermediate views can expose the same base through separate paths. Private and
+protected base declarations remain diagnostic metadata. Offsets, ownership,
+inherited members, ABI signatures and exports are not inferred.
+
+There are at most 256 class candidates before compiler eligibility checks, 32
+selected names and 256 direct base declarations across selected classes. Header
+and compiler paths, target and flags are frozen before further queries. One
+complete AST and at most one class-eligibility query build the catalog; selected
+classes and final conversions use the existing bounded hierarchy queries.
+Files/environment must remain stable. Errors return nil without a partial graph.
+Types without accessible catalog names require explicit application choices;
+`DiscoverHierarchy` retains its resolver and branch-selection role.
+
+The [executed example](../examples/cxx/header_hierarchy.go) selects a root alias,
+global padding and counter aliases, and bases declared in other namespaces.
+Generated cgo, direct llgo and dynamic libffi callers execute composed views at
+`-O0`/`-O2`, checking shared virtual-base identity, dispatch, nulls, constructor
+exceptions and consuming destruction. Portable tests cover eight targets,
+target/preprocessor-dependent bases, ambiguous and private paths, template/nested
+and lambda aliases, class-candidate limits and independent function-catalog bounds.
+
 ## Coverage and remaining work
 
 Go and llgo CI compile the base facade's C declarations and C++ source for all
@@ -641,9 +676,9 @@ abstract classes and target-dependent declarations. Generated cgo, direct llgo
 and dynamic libffi callers execute the selected member facade at `-O0`/`-O2`.
 
 Unrestricted declaration discovery, variadic constructors and class-value tails,
-base-name discovery beyond explicit catalogs and downcasts/crosscasts remain
-outside this manifest. Bounded header catalogs are available through
-`DiscoverHeader`. These
+base identities without accessible catalog names and downcasts/crosscasts remain
+outside this manifest. Bounded header catalogs and base closures are available
+through `DiscoverHeader` and `DiscoverHeaderHierarchy`. These
 facade tests use complete libraries. Raw C++ DWARF exceptions have a separately
 qualified Linux/macOS subset; see [unwind scope](unwind.md). The generator
 complements llcppg and ABIBridge while keeping C++ ABI

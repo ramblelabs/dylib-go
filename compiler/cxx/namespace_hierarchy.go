@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"path/filepath"
 	"strings"
 )
 
@@ -32,8 +31,8 @@ const maxHierarchyNamespaces = 16
 // inputs, compiler errors, cancellation or exceeded bounds return nil, never a
 // partial result. Use DiscoverHierarchy for explicit name mapping or branch skips.
 func DiscoverNamespaceHierarchy(ctx context.Context, header, root string, namespaces []string, opts DiscoveryOptions) (*ClassHierarchy, error) {
-	if len(root) > maxDiscoveryName || !qualifiedName(root) {
-		return nil, fmt.Errorf("cxx: invalid hierarchy root %q", root)
+	if err := validateHierarchyRoot(root); err != nil {
+		return nil, err
 	}
 	namespaces = append([]string(nil), namespaces...)
 	if len(namespaces) == 0 || len(namespaces) > maxHierarchyNamespaces {
@@ -46,15 +45,10 @@ func DiscoverNamespaceHierarchy(ctx context.Context, header, root string, namesp
 		}
 		seenNamespaces[name] = true
 	}
-	query, err := discoveryCommand(ctx, header, opts)
+	query, opts, err := hierarchyCompiler(ctx, header, opts)
 	if err != nil {
 		return nil, err
 	}
-	query.compiler, err = filepath.Abs(query.compiler)
-	if err != nil {
-		return nil, err
-	}
-	opts = DiscoveryOptions{Compiler: query.compiler, Flags: append([]string(nil), query.args...)}
 	var candidates []string
 	cataloged := make(map[string]bool)
 	for _, namespace := range namespaces {
@@ -72,6 +66,13 @@ func DiscoverNamespaceHierarchy(ctx context.Context, header, root string, namesp
 			}
 		}
 	}
+	return discoverCatalogHierarchy(ctx, query, root, candidates, opts)
+}
+
+// Namespace and whole-header catalogs use identical traversal, budgets and
+// native conversion probes; contextual base spellings never choose aliases.
+func discoverCatalogHierarchy(ctx context.Context, query *discoveryCompiler, root string, candidates []string, opts DiscoveryOptions) (*ClassHierarchy, error) {
+	var err error
 	result := &ClassHierarchy{}
 	names := []string{root}
 	seen := map[string]bool{root: true}

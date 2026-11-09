@@ -218,7 +218,8 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Bounded namespace free-function template catalogs with primary/redeclaration identity, nested type/value/template parameters, defaults and packs; explicit bounded template arguments for free/member/static/generic-lambda calls, native compiler substitution checks and Go/llgo typed/dynamic execution.
 - [x] Bounded direct public member-template catalogs for selected class/template/lambda aliases, sharing class identity/access and primary-template decoding; constructor/conversion/static/cv-ref metadata and Go/llgo typed/dynamic execution.
 - [x] Bounded whole-header global/named-namespace class/alias, ordinary-function and primary-template catalogs through shared identity, access/eligibility and AST limits; global/qualified Go/llgo typed/dynamic facade calls.
-- [ ] Automatic ABI/ownership selection and base-name discovery beyond explicit class/namespace catalogs.
+- [x] Public base closure selection from whole-header class/alias catalogs, including global/cross-namespace names, shared namespace traversal and compiler conversion checks, independent function-catalog limits and native Go/llgo composed views.
+- [ ] Automatic ABI/ownership selection and base identities without accessible catalog names.
 - [x] Explicit retained session-to-session function/data symbol providers, transitive code leases and cleanup ordering without libffi.
 - [x] Explicit JSON/Go dependency manifests, exact declared ABI versions, multiple-root provider planning, retained import aliases, lazy archive export roots, ordered cleanup and failure rollback without libffi.
 - [x] Pure Go provider catalog discovery in explicit directories, exact declared versions, cross-catalog dependencies, absolute input paths, bounded metadata IO and native object/archive/library execution.

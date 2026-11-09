@@ -45,19 +45,13 @@ func DiscoverHierarchy(ctx context.Context, header, root string, resolve BaseNam
 	if resolve == nil {
 		return nil, fmt.Errorf("cxx: hierarchy requires a base-name resolver")
 	}
-	if len(root) > maxDiscoveryName || !qualifiedName(root) {
-		return nil, fmt.Errorf("cxx: invalid hierarchy root %q", root)
+	if err := validateHierarchyRoot(root); err != nil {
+		return nil, err
 	}
-	query, err := discoveryCommand(ctx, header, opts)
+	query, opts, err := hierarchyCompiler(ctx, header, opts)
 	if err != nil {
 		return nil, err
 	}
-	query.compiler, err = filepath.Abs(query.compiler)
-	if err != nil {
-		return nil, err
-	}
-	// Copy flags before invoking callbacks. query.args already contains the target.
-	opts = DiscoveryOptions{Compiler: query.compiler, Flags: append([]string(nil), query.args...)}
 	names := []string{root}
 	seen := map[string]bool{root: true}
 	result := &ClassHierarchy{}
@@ -160,4 +154,25 @@ func decodeHierarchySelections(data []byte, namespace string, selections []BaseR
 		}
 	}
 	return nil
+}
+
+func validateHierarchyRoot(root string) error {
+	if len(root) > maxDiscoveryName || !qualifiedName(root) {
+		return fmt.Errorf("cxx: invalid hierarchy root %q", root)
+	}
+	return nil
+}
+
+// Freeze paths, flags and target before a hierarchy makes additional queries or
+// invokes caller callbacks. query.args already includes the selected target.
+func hierarchyCompiler(ctx context.Context, header string, opts DiscoveryOptions) (*discoveryCompiler, DiscoveryOptions, error) {
+	query, err := discoveryCommand(ctx, header, opts)
+	if err != nil {
+		return nil, DiscoveryOptions{}, err
+	}
+	query.compiler, err = filepath.Abs(query.compiler)
+	if err != nil {
+		return nil, DiscoveryOptions{}, err
+	}
+	return query, DiscoveryOptions{Compiler: query.compiler, Flags: append([]string(nil), query.args...)}, nil
 }
