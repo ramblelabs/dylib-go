@@ -132,10 +132,18 @@ const apiMacro = `#if defined(_WIN32)
 // Objects, output storage, provider images and asynchronous native activity stay
 // caller-owned. Use complete OS libraries for C++ runtime/exception registration.
 func Generate(header string, classes []Class) (*Facade, error) {
-	return generate(header, classes, false, "")
+	return generate(header, classes, facadeOptions{})
 }
 
-func generate(header string, classes []Class, allowGlobal bool, preamble string) (*Facade, error) {
+// facadeOptions is internal producer state, shared by explicit and inferred facades.
+type facadeOptions struct {
+	allowGlobal bool
+	preamble    string
+	// Inferred non-static adapters expose their native receiver as argument zero.
+	nonnullReceiver bool
+}
+
+func generate(header string, classes []Class, options facadeOptions) (*Facade, error) {
 	if header == "" || strings.ContainsAny(header, "\"\\\r\n\x00") {
 		return nil, fmt.Errorf("cxx: expected a quoted-include path using forward slashes")
 	}
@@ -163,7 +171,7 @@ func generate(header string, classes []Class, allowGlobal bool, preamble string)
 		return nil
 	}
 	for _, class := range classes {
-		if !qualifiedName(class.Name) && !(allowGlobal && class.Name == "") {
+		if !qualifiedName(class.Name) && !(options.allowGlobal && class.Name == "") {
 			return nil, fmt.Errorf("cxx: invalid C++ type name %q", class.Name)
 		}
 		for _, constructor := range class.Constructors {
@@ -257,6 +265,11 @@ return DYLIB_CXX_SUCCESS;
 			}
 			if !method.Static {
 				fmt.Fprint(&body, "if (!handle) return DYLIB_CXX_INVALID_ARGUMENT;\n")
+			} else if options.nonnullReceiver {
+				if len(method.Signature.Args) == 0 || method.Signature.Args[0] != abi.Pointer {
+					return nil, fmt.Errorf("cxx: inferred receiver requires a leading pointer")
+				}
+				fmt.Fprint(&body, "if (!p0) return DYLIB_CXX_INVALID_ARGUMENT;\n")
 			}
 			fmt.Fprint(&body, checks, "try {\n")
 			call := "entry(" + args + ")"
@@ -354,7 +367,7 @@ return DYLIB_CXX_SUCCESS;
 	fmt.Fprint(&c, apiMacro, "#ifdef __cplusplus\nextern \"C\" {\n#endif\n", declarations.String(), "#ifdef __cplusplus\n}\n#endif\n#undef DYLIB_GO_CXX_API\n#undef DYLIB_GO_CXX_NOEXCEPT\n#endif\n")
 	result.CHeader = c.Bytes()
 	var cpp bytes.Buffer
-	fmt.Fprintf(&cpp, "%s\n#include \"%s\"\n%s%s%s#undef DYLIB_GO_CXX_API\n#undef DYLIB_GO_CXX_NOEXCEPT\n", result.CHeader, header, preamble, apiMacro, definitions.String())
+	fmt.Fprintf(&cpp, "%s\n#include \"%s\"\n%s%s%s#undef DYLIB_GO_CXX_API\n#undef DYLIB_GO_CXX_NOEXCEPT\n", result.CHeader, header, options.preamble, apiMacro, definitions.String())
 	result.CXXSource = cpp.Bytes()
 	return result, nil
 }

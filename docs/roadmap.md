@@ -220,7 +220,8 @@ Each implementation PR must pass its native Go and llgo CI jobs before merge. De
 - [x] Bounded whole-header global/named-namespace class/alias, ordinary-function and primary-template catalogs through shared identity, access/eligibility and AST limits; global/qualified Go/llgo typed/dynamic facade calls.
 - [x] Public base closure selection from whole-header class/alias catalogs, including global/cross-namespace names, shared namespace traversal and compiler conversion checks, independent function-catalog limits and native Go/llgo composed views.
 - [x] Bounded compiler-derived scalar/enum/native-pointer transports for selected unambiguous C++ free/static functions, explicit template selection, target/producer guards and generated Go/llgo typed/dynamic facade execution.
-- [ ] Remaining automatic aggregate/member ABI selection, ownership policy and base identities without accessible catalog names.
+- [x] Compiler-derived non-static member scalar/enum/native-pointer transports and all receiver cv/ref/noexcept forms through the shared inference pipeline, with inherited/virtual dispatch, public virtual-base adjustment, explicit owner policy and native Go/llgo typed/dynamic calls.
+- [ ] Remaining automatic aggregate/overload/constructor/conversion ABI selection, ownership policy and base identities without accessible catalog names.
 - [x] Explicit retained session-to-session function/data symbol providers, transitive code leases and cleanup ordering without libffi.
 - [x] Explicit JSON/Go dependency manifests, exact declared ABI versions, multiple-root provider planning, retained import aliases, lazy archive export roots, ordered cleanup and failure rollback without libffi.
 - [x] Pure Go provider catalog discovery in explicit directories, exact declared versions, cross-catalog dependencies, absolute input paths, bounded metadata IO and native object/archive/library execution.

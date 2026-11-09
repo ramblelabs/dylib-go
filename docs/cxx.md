@@ -163,6 +163,52 @@ match the compiler's default ABI; separate calling conventions require an
 explicit manifest/native wrapper. Inference neither performs cross-OS/CPU
 execution nor introduces new raw C++ runtime/unwind support.
 
+## Inferred member transports
+
+`InferMethods(ctx, header, selections, DiscoveryOptions)` accepts
+`MethodSelection{Class, Name, Symbol, TemplateArgs}` and returns an
+`InferredMethodFacade` with the generated `Facade` and ordered `Methods` metadata.
+The [executed selection example](../examples/cxx/inferred_methods.go) combines
+inferred calls with an explicit owner manifest. The original fixture header has
+an include guard; applications with unguarded headers should compile owner and
+method sources as separate translation units.
+
+The same compiler query/transport/guard pipeline used by `InferFunctions` derives
+each member's argument/result carriers and its `Const`, `Volatile`, `Ref` and
+`Noexcept` properties. All twelve cv/ref forms and their `noexcept` forms are
+supported for the producer's default member calling convention. Other native
+conventions require explicit wrappers. Name an unambiguous non-static member, a concrete member-template
+specialization, or `operator()` of a named class/lambda alias. Static members use
+`InferFunctions`; ambiguous overloads, conversion operators, constructors and
+destruction continue to use explicit manifests/native wrappers.
+
+`InferredMethod.Transport` excludes the receiver. The actual C export takes an
+opaque receiver first, then the logical argument transports and an output pointer
+for a non-void result, and returns an `int32_t` status. Parse `Facade.CHeader` for
+bindings. Null output slots return `InvalidArgument`. Non-void outputs are cleared
+before a null receiver is rejected with `InvalidArgument`; void members also
+reject null receivers. Native exceptions return `Exception` under the existing
+facade rules. Violating a native `noexcept` contract still follows C++ termination
+semantics.
+
+The handle must already point to the selected `Class` subobject. The native
+compiler applies accessible, unambiguous inherited member pointers, including
+public virtual-base adjustments, and supplies virtual dispatch. A base handle
+must be obtained through the native API or an explicit compiler-generated base
+view. Opaque addresses do not carry runtime class identity or retain ownership.
+Rvalue-qualified calls change the native expression's value category; they do
+not automatically consume, invalidate or destroy a handle. The application still
+selects allocation/destruction, borrowed views and callback/provider lifetimes.
+
+The scalar/enum/native-pointer scope and independent source/AST bounds are shared
+with function inference. Select 1–256 distinct C export names and up to 32 explicit
+native parameters per member; each class/member/export name is at most 256 bytes.
+Metadata and template arguments are snapshots. Generated guards also reject
+changes in receiver cv/ref or `noexcept` qualifiers. Unsupported class/union
+values, references, member-pointer values, variadics and inaccessible/ambiguous
+receiver conversions return no facade. Go never interprets member-pointer bytes,
+class layouts, vtable entries or base offsets.
+
 ## Status and ownership
 
 | Status | Meaning |
