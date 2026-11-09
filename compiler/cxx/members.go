@@ -204,9 +204,9 @@ func decodeHeaderAST(data []byte) (*memberAST, error) {
 	return decodeDeclarationAST(data, "", true)
 }
 
-func decodeDeclarationAST(data []byte, namespace string, whole bool) (*memberAST, error) {
+func preflightDiscoveryAST(data []byte) error {
 	if len(data) > maxDiscoveryAST {
-		return nil, fmt.Errorf("cxx: member AST exceeds byte budget")
+		return fmt.Errorf("cxx: member AST exceeds byte budget")
 	}
 	// Bound nesting before unmarshalling recursive nodes. Token reads the JSON
 	// stream iteratively, including fields the typed decoder would otherwise skip.
@@ -218,19 +218,26 @@ func decodeDeclarationAST(data []byte, namespace string, whole bool) (*memberAST
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("cxx: invalid member AST: %w", err)
+			return fmt.Errorf("cxx: invalid member AST: %w", err)
 		}
 		if delimiter, ok := token.(json.Delim); ok {
 			switch delimiter {
 			case '{', '[':
 				depth++
 				if depth > 2*maxMemberDepth+64 { // Inner arrays/nodes, plus type/location fields.
-					return nil, fmt.Errorf("cxx: member AST exceeds JSON depth budget")
+					return fmt.Errorf("cxx: member AST exceeds JSON depth budget")
 				}
 			case '}', ']':
 				depth--
 			}
 		}
+	}
+	return nil
+}
+
+func decodeDeclarationAST(data []byte, namespace string, whole bool) (*memberAST, error) {
+	if err := preflightDiscoveryAST(data); err != nil {
+		return nil, err
 	}
 	ast := &memberAST{records: make(map[string]*memberNode)}
 	references := make(map[string]bool)
