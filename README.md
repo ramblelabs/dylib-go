@@ -880,6 +880,12 @@ and signedness and checks the generated facade. See the
 [executed inference example](examples/cxx/inferred.go) and
 [type and lifetime limits](docs/cxx.md#inferred-function-transports).
 
+`cxx.InferMethods` extends the same compiler queries to selected non-static
+members, deriving receiver cv/ref and `noexcept` qualifiers as well as transports.
+Native member pointers preserve inherited/virtual dispatch. Construction and
+ownership remain explicit; see the [executed member inference example](examples/cxx/inferred_methods.go)
+and [member inference contract](docs/cxx.md#inferred-member-transports).
+
 `cxx.DiscoverFunctionTemplates` also catalogs named namespace function templates.
 `Function.TemplateArgs` and `Method.TemplateArgs` select concrete type/value
 arguments, including defaults, packs and generic lambda calls; nil and empty

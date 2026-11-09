@@ -34,10 +34,10 @@ type Function struct {
 // non-static members require a separately named native wrapper. Generated C
 // declarations and status/output/lifetime rules are identical to Generate's.
 func GenerateFunctions(header string, functions []Function) (*Facade, error) {
-	return generateFunctions(header, functions, "")
+	return generateFunctions(header, functions, facadeOptions{})
 }
 
-func generateFunctions(header string, functions []Function, preamble string) (*Facade, error) {
+func generateFunctions(header string, functions []Function, options facadeOptions) (*Facade, error) {
 	if len(functions) == 0 || len(functions) > maxFacadeFunctions {
 		return nil, fmt.Errorf("cxx: select 1-256 functions")
 	}
@@ -58,5 +58,6 @@ func generateFunctions(header string, functions []Function, preamble string) (*F
 			FunctionArgs: f.FunctionArgs, FunctionResult: f.FunctionResult,
 		}}})
 	}
-	return generate(header, classes, true, preamble)
+	options.allowGlobal = true
+	return generate(header, classes, options)
 }

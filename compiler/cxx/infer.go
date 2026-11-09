@@ -61,6 +61,16 @@ func InferFunctions(ctx context.Context, header string, selections []FunctionSel
 	if err != nil {
 		return nil, err
 	}
+	result, err := inferSelected(ctx, header, selections, nil, namespace, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &InferredFacade{Facade: result.facade, Functions: result.Functions}, nil
+}
+
+// inferSelected shares all compiler probes, bounds, transport decoding, source
+// generation and final validation between functions and non-static methods.
+func inferSelected(ctx context.Context, header string, selections []FunctionSelection, methods []MethodSelection, namespace string, opts DiscoveryOptions) (*inferredDescriptions, error) {
 	query, err := discoveryCommand(ctx, header, opts)
 	if err != nil {
 		return nil, err
@@ -69,7 +79,7 @@ func InferFunctions(ctx context.Context, header string, selections []FunctionSel
 	if err != nil {
 		return nil, err
 	}
-	source, err := inferenceProbes(selections, namespace, nil)
+	source, err := inferenceProbes(selections, namespace, nil, methods)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +87,7 @@ func InferFunctions(ctx context.Context, header string, selections []FunctionSel
 	if err != nil {
 		return nil, err
 	}
-	widths, err := decodeInference(data, namespace, selections, nil)
+	widths, err := decodeInference(data, namespace, selections, nil, methods)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +95,7 @@ func InferFunctions(ctx context.Context, header string, selections []FunctionSel
 	for i, f := range widths.Functions {
 		counts[i] = len(f.Transport.Args)
 	}
-	source, err = inferenceProbes(selections, namespace, counts)
+	source, err = inferenceProbes(selections, namespace, counts, methods)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +103,7 @@ func InferFunctions(ctx context.Context, header string, selections []FunctionSel
 	if err != nil {
 		return nil, err
 	}
-	inferred, err := decodeInference(data, namespace, selections, counts)
+	inferred, err := decodeInference(data, namespace, selections, counts, methods)
 	if err != nil {
 		return nil, err
 	}
@@ -102,15 +112,18 @@ func InferFunctions(ctx context.Context, header string, selections []FunctionSel
 		return nil, fmt.Errorf("cxx: inferred pointer width changed between queries")
 	}
 	for i, f := range inferred.Functions {
+		if methods != nil && inferred.qualifiers[i] != widths.qualifiers[i] {
+			return nil, fmt.Errorf("cxx: inferred receiver qualifiers changed between queries")
+		}
 		if f.Transport.Result != widths.Functions[i].Transport.Result {
 			return nil, fmt.Errorf("cxx: inferred result changed between queries")
 		}
 	}
-	functions, preamble, err := inferenceWrappers(inferred, namespace)
+	functions, preamble, err := inferenceWrappers(inferred, namespace, methods)
 	if err != nil {
 		return nil, err
 	}
-	facade, err := generateFunctions(filepath.ToSlash(query.header), functions, preamble)
+	facade, err := generateFunctions(filepath.ToSlash(query.header), functions, facadeOptions{preamble: preamble, nonnullReceiver: methods != nil})
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +140,8 @@ func InferFunctions(ctx context.Context, header string, selections []FunctionSel
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &InferredFacade{Facade: facade, Functions: inferred.Functions}, nil
+	inferred.facade = facade
+	return inferred, nil
 }
 
 func inferenceSelections(input []FunctionSelection) ([]FunctionSelection, string, error) {
@@ -137,37 +151,59 @@ func inferenceSelections(input []FunctionSelection) ([]FunctionSelection, string
 	result := make([]FunctionSelection, len(input))
 	seen := map[string]bool{}
 	for i, s := range input {
-		if len(s.Name) > maxDiscoveryName || !qualifiedName(s.Name) || len(s.Symbol) > maxDiscoveryName || !identifier(s.Symbol) || seen[s.Symbol] {
-			return nil, "", fmt.Errorf("cxx: invalid selection or duplicate inference export %q", s.Symbol)
+		if len(s.Name) > maxDiscoveryName || !qualifiedName(s.Name) {
+			return nil, "", fmt.Errorf("cxx: invalid inferred function name %q", s.Name)
 		}
-		if _, err := templateArguments(s.TemplateArgs); err != nil {
-			return nil, "", fmt.Errorf("cxx: inferred %s: %w", s.Name, err)
+		selected, err := snapshotInferenceExport(s, seen)
+		if err != nil {
+			return nil, "", err
 		}
-		seen[s.Symbol] = true
-		if s.TemplateArgs != nil {
-			s.TemplateArgs = append([]string{}, s.TemplateArgs...)
-		}
-		result[i] = s
+		result[i] = selected
 	}
 	encoded, _ := json.Marshal(result)
 	hash := sha256.Sum256(encoded)
 	return result, fmt.Sprintf("dylib_go_inferred_%x", hash[:8]), nil
 }
 
-func inferenceAliases(selections []FunctionSelection) string {
+// Shared export/template validation and snapshots apply to both selectors.
+func snapshotInferenceExport(s FunctionSelection, seen map[string]bool) (FunctionSelection, error) {
+	if len(s.Symbol) > maxDiscoveryName || !identifier(s.Symbol) || seen[s.Symbol] {
+		return FunctionSelection{}, fmt.Errorf("cxx: invalid selection or duplicate inference export %q", s.Symbol)
+	}
+	if _, err := templateArguments(s.TemplateArgs); err != nil {
+		return FunctionSelection{}, fmt.Errorf("cxx: inferred %s: %w", s.Name, err)
+	}
+	seen[s.Symbol] = true
+	if s.TemplateArgs != nil {
+		s.TemplateArgs = append([]string{}, s.TemplateArgs...)
+	}
+	return s, nil
+}
+
+func inferenceAliases(selections []FunctionSelection, methods []MethodSelection) string {
 	var source strings.Builder
 	source.WriteString(inferenceTraits())
+	if methods != nil {
+		source.WriteString(memberInferenceTraits())
+	}
 	for i, s := range selections {
 		template, _ := templateArguments(s.TemplateArgs)
-		fmt.Fprintf(&source, "using P%d=Prototype<decltype(&::%s%s)>;\nstatic constexpr auto native_%d=&::%s%s;\n", i, s.Name, template, i, s.Name, template)
+		if methods == nil {
+			fmt.Fprintf(&source, "using P%d=Prototype<decltype(&::%s%s)>;\nstatic constexpr auto native_%d=&::%s%s;\n", i, s.Name, template, i, s.Name, template)
+		} else {
+			fmt.Fprintf(&source, "using C%d=::%s;\nusing P%d=Member<decltype(&C%d::%s%s)>;\nstatic constexpr auto native_%d=&C%d::%s%s;\n", i, methods[i].Class, i, i, methods[i].Name, template, i, i, methods[i].Name, template)
+		}
 	}
 	return source.String()
 }
 
-func inferenceProbes(selections []FunctionSelection, namespace string, counts []int) (string, error) {
+func inferenceProbes(selections []FunctionSelection, namespace string, counts []int, methods []MethodSelection) (string, error) {
 	var source strings.Builder
-	fmt.Fprintf(&source, "namespace %s {\ntemplate<int> struct Answer {};\nnamespace detail {\n%s}\nusing pointer_bytes=Answer<sizeof(void*)>;\n", namespace, inferenceAliases(selections))
+	fmt.Fprintf(&source, "namespace %s {\ntemplate<int> struct Answer {};\nnamespace detail {\n%s}\nusing pointer_bytes=Answer<sizeof(void*)>;\n", namespace, inferenceAliases(selections, methods))
 	for i := range selections {
+		if methods != nil {
+			fmt.Fprintf(&source, "using f%d_receiver=Answer<detail::P%d::qualifiers>;\n", i, i)
+		}
 		fmt.Fprintf(&source, "using f%d_count=Answer<detail::P%d::count>;\nusing f%d_result=Answer<detail::code<typename detail::P%d::Result>()>;\n", i, i, i, i)
 		if counts != nil {
 			for j := 0; j < counts[i]; j++ {
@@ -185,10 +221,15 @@ func inferenceProbes(selections []FunctionSelection, namespace string, counts []
 type inferredDescriptions struct {
 	Functions   []InferredFunction
 	pointerSize int
+	qualifiers  []int
+	facade      *Facade
 }
 
-func decodeInference(data []byte, namespace string, selections []FunctionSelection, counts []int) (*inferredDescriptions, error) {
+func decodeInference(data []byte, namespace string, selections []FunctionSelection, counts []int, methods []MethodSelection) (*inferredDescriptions, error) {
 	total := 1 + 2*len(selections)
+	if methods != nil {
+		total += len(selections)
+	}
 	if counts != nil {
 		for _, n := range counts {
 			total += n
@@ -212,6 +253,13 @@ func decodeInference(data []byte, namespace string, selections []FunctionSelecti
 	}
 	result := &inferredDescriptions{pointerSize: size}
 	for i, s := range selections {
+		if methods != nil {
+			q, err := number(fmt.Sprintf("f%d_receiver", i))
+			if err != nil || q < 0 || q >= 2*inferredReceiverForms {
+				return nil, fmt.Errorf("cxx: invalid inferred receiver qualifiers for %s", s.Name)
+			}
+			result.qualifiers = append(result.qualifiers, q)
+		}
 		n, err := number(fmt.Sprintf("f%d_count", i))
 		if err != nil {
 			return nil, err
@@ -252,21 +300,28 @@ func inferredType(code int, result bool) bool {
 	return err == nil
 }
 
-func inferenceWrappers(inferred *inferredDescriptions, namespace string) ([]Function, string, error) {
+func inferenceWrappers(inferred *inferredDescriptions, namespace string, methods []MethodSelection) ([]Function, string, error) {
 	selections := make([]FunctionSelection, len(inferred.Functions))
 	for i, f := range inferred.Functions {
 		selections[i] = f.Selection
 	}
 	var source strings.Builder
-	fmt.Fprintf(&source, "namespace %s {\nnamespace detail {\n%s}\nstatic_assert(sizeof(void*)==%d,\"inferred target pointer width changed\");\n", namespace, inferenceAliases(selections), inferred.pointerSize)
+	fmt.Fprintf(&source, "namespace %s {\nnamespace detail {\n%s}\nstatic_assert(sizeof(void*)==%d,\"inferred target pointer width changed\");\n", namespace, inferenceAliases(selections, methods), inferred.pointerSize)
 	functions := make([]Function, len(selections))
 	for i, f := range inferred.Functions {
 		signature := f.Transport
+		offset := 0
+		carrier := signature
+		if methods != nil {
+			offset = 1
+			carrier.Args = append([]abi.Type{abi.Pointer}, signature.Args...)
+			fmt.Fprintf(&source, "static_assert(detail::P%d::qualifiers==%d,\"inferred receiver qualifiers changed\");\n", i, inferred.qualifiers[i])
+		}
 		rtype, err := cType(signature.Result)
 		if err != nil {
 			return nil, "", err
 		}
-		parameters, _, _, err := arguments(signature.Args)
+		parameters, _, _, err := arguments(carrier.Args)
 		if err != nil {
 			return nil, "", err
 		}
@@ -278,9 +333,12 @@ func inferenceWrappers(inferred *inferredDescriptions, namespace string) ([]Func
 			if t == abi.Pointer {
 				cast = "reinterpret_cast"
 			}
-			values = append(values, fmt.Sprintf("%s<typename detail::P%d::template Argument<%d>>(p%d)", cast, i, j, j))
+			values = append(values, fmt.Sprintf("%s<typename detail::P%d::template Argument<%d>>(p%d)", cast, i, j, j+offset))
 		}
 		call := fmt.Sprintf("detail::native_%d(%s)", i, strings.Join(values, ", "))
+		if methods != nil {
+			call = fmt.Sprintf("(static_cast<typename detail::P%d::template Receiver<detail::C%d>>(*static_cast<detail::C%d*>(p0)).*detail::native_%d)(%s)", i, i, i, i, strings.Join(values, ", "))
+		}
 		body := call + ";"
 		if signature.Result == abi.Pointer {
 			body = "return const_cast<void*>(reinterpret_cast<const volatile void*>(" + call + "));"
@@ -288,7 +346,7 @@ func inferenceWrappers(inferred *inferredDescriptions, namespace string) ([]Func
 			body = "return static_cast<" + rtype + ">(" + call + ");"
 		}
 		fmt.Fprintf(&source, "static %s call_%d(%s) { %s }\n", rtype, i, strings.Join(parameters, ", "), body)
-		functions[i] = Function{Name: fmt.Sprintf("%s::call_%d", namespace, i), Symbol: f.Selection.Symbol, Signature: signature}
+		functions[i] = Function{Name: fmt.Sprintf("%s::call_%d", namespace, i), Symbol: f.Selection.Symbol, Signature: carrier}
 	}
 	source.WriteString("}\n")
 	if source.Len() > maxDiscoverySource {

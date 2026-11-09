@@ -34,7 +34,7 @@ func inferenceFixture(t *testing.T, patch func(map[string]int)) []byte {
 func TestInferenceMetadataValidation(t *testing.T) {
 	selections := []FunctionSelection{{Name: "f", Symbol: "call"}}
 	good := inferenceFixture(t, nil)
-	got, err := decodeInference(good, "probe", selections, []int{1})
+	got, err := decodeInference(good, "probe", selections, []int{1}, nil)
 	if err != nil || got.pointerSize != 8 || got.Functions[0].Transport.Args[0] != abi.I8 {
 		t.Fatal(got, err)
 	}
@@ -52,7 +52,7 @@ func TestInferenceMetadataValidation(t *testing.T) {
 		"record_arg":         func(v map[string]int) { v["f0_arg0"] = int(abi.Struct) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got, err := decodeInference(inferenceFixture(t, patch), "probe", selections, []int{1}); err == nil || got != nil {
+			if got, err := decodeInference(inferenceFixture(t, patch), "probe", selections, []int{1}, nil); err == nil || got != nil {
 				t.Fatal(got, err)
 			}
 		})
@@ -65,7 +65,7 @@ func TestInferenceMetadataValidation(t *testing.T) {
 		"wrong_template": []byte(strings.Replace(string(good), "probe::Answer<8>", "wrong::Answer<8>", 1)),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got, err := decodeInference(input, "probe", selections, []int{1}); err == nil || got != nil {
+			if got, err := decodeInference(input, "probe", selections, []int{1}, nil); err == nil || got != nil {
 				t.Fatal(got, err)
 			}
 		})
@@ -122,7 +122,7 @@ func TestInferenceQueryBudgets(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := inferenceProbes(selected, ns, nil); err == nil {
+		if _, err := inferenceProbes(selected, ns, nil, nil); err == nil {
 			t.Fatal("oversized query accepted")
 		}
 	})
