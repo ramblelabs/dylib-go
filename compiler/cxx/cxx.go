@@ -132,10 +132,10 @@ const apiMacro = `#if defined(_WIN32)
 // Objects, output storage, provider images and asynchronous native activity stay
 // caller-owned. Use complete OS libraries for C++ runtime/exception registration.
 func Generate(header string, classes []Class) (*Facade, error) {
-	return generate(header, classes, false)
+	return generate(header, classes, false, "")
 }
 
-func generate(header string, classes []Class, allowGlobal bool) (*Facade, error) {
+func generate(header string, classes []Class, allowGlobal bool, preamble string) (*Facade, error) {
 	if header == "" || strings.ContainsAny(header, "\"\\\r\n\x00") {
 		return nil, fmt.Errorf("cxx: expected a quoted-include path using forward slashes")
 	}
@@ -354,7 +354,7 @@ return DYLIB_CXX_SUCCESS;
 	fmt.Fprint(&c, apiMacro, "#ifdef __cplusplus\nextern \"C\" {\n#endif\n", declarations.String(), "#ifdef __cplusplus\n}\n#endif\n#undef DYLIB_GO_CXX_API\n#undef DYLIB_GO_CXX_NOEXCEPT\n#endif\n")
 	result.CHeader = c.Bytes()
 	var cpp bytes.Buffer
-	fmt.Fprintf(&cpp, "%s\n#include \"%s\"\n%s%s#undef DYLIB_GO_CXX_API\n#undef DYLIB_GO_CXX_NOEXCEPT\n", result.CHeader, header, apiMacro, definitions.String())
+	fmt.Fprintf(&cpp, "%s\n#include \"%s\"\n%s%s%s#undef DYLIB_GO_CXX_API\n#undef DYLIB_GO_CXX_NOEXCEPT\n", result.CHeader, header, preamble, apiMacro, definitions.String())
 	result.CXXSource = cpp.Bytes()
 	return result, nil
 }

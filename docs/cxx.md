@@ -103,6 +103,66 @@ diagnostics are bounded. The supplied context cancels the compiler process. Any
 validation, compiler or metadata failure returns no relations. This is selected
 type inspection. Separate namespace and member queries are described below.
 
+## Inferred function transports
+
+`InferFunctions(ctx, header, selections, DiscoveryOptions)` accepts
+`FunctionSelection{Name, Symbol, TemplateArgs}` entries and returns an
+`InferredFacade`. The [executed example](../examples/cxx/inferred.go) supplies
+only names and optional template arguments. An optional Clang-compatible C++17
+compiler derives each native function pointer, its argument count and transport
+types, then validates the complete generated source. Free functions and accessible
+static members must be unambiguous; `noexcept` and explicit template selections
+work. All native parameters participate, including ones with default arguments.
+
+| Native type | Inferred transport | Contract |
+| --- | --- | --- |
+| Standard integer types and typedefs, including `char`/`wchar_t`/`char16_t`/`char32_t` | Signed/unsigned 8/16/32/64-bit integer | Compiler target, width and signedness determine the carrier, including `long` and plain `char` |
+| `bool` | `abi.Bool` | Requires a one-byte native representation |
+| Enum, scoped or unscoped | Underlying integer or Boolean carrier | The application supplies values valid for the native enum's domain |
+| `float`, `double` | `abi.F32`, `abi.F64` | Requires four/eight-byte representations |
+| Object or function pointer, including cv-qualified pointees and multiple pointer levels | `abi.Pointer` | The wrapper restores the exact native pointer type; addresses and lifetimes remain caller-owned |
+| `void` result | `abi.Void` | The C export returns status without a result slot |
+| Class/union values, references, extended numeric types, variadics, non-static member pointers or unresolved overloads/templates | Rejected | Use an explicit manifest or a separately named native wrapper |
+
+`InferredFunction.Transport` describes the **logical native arguments/result**.
+It is not the C export signature: the generated C function returns an `int32_t`
+status and appends an output pointer for a non-void native result. Parse
+`InferredFacade.Facade.CHeader` with `compiler/clang` to generate bindings or bind
+the C export dynamically. The existing status/exception/output rules apply.
+Do not bind `Transport` to the generated export or use it to call the original
+mangled symbol directly; the compiler supplies the actual native call.
+
+Inference uses compiler enum traits rather than Go parsing of native type
+spellings; see [GCC's type-trait definitions](https://gcc.gnu.org/onlinedocs/gcc/Type-Traits.html).
+Native function/object pointer conversion relies on the qualified producer and
+platform contract; the [C++ reinterpret-cast rules](https://eel.is/c++draft/expr.reinterpret.cast)
+make this conversion conditionally supported. An opaque pointer does not expose
+its pointee layout or callback prototype. In particular, a callback still needs
+an explicitly supplied exact native signature, appropriate thread integration
+and a retained registration/provider. Object ownership, allocation/destruction,
+nullability, enum value domains and asynchronous lifetime are not inferred.
+
+Selections retain input order and own their template-argument snapshots. The
+existing template grammar and nil/empty distinction apply. Each selection name
+and C export identifier is at most 256 bytes; 1–256 distinct export names and up
+to 32 native arguments per selection are accepted. Independent aggregate budgets
+still apply: 16 MiB for the primary header, 1 MiB per generated query/facade and
+32 MiB for a returned AST, with the shared JSON nesting and diagnostic limits.
+Queries use at most three compiler invocations: arity/result/pointer-width,
+argument types and final generated-source validation. Cancellation, compiler
+failure, malformed metadata or an unsupported selection returns no facade.
+
+Match the discovery target, defines, include paths, ABI flags, SDK and native
+runtime to the producer. The generated source checks pointer width, arity and
+transport kinds for every selected result and argument. Changing plain-character
+signedness, enum width or a type's transport therefore fails at compilation.
+These checks do not prove complete SDK compatibility, native pointee identity
+or enum value-domain compatibility. Files and compiler environment must remain
+stable throughout discovery and production. Function-pointer extraction must
+match the compiler's default ABI; separate calling conventions require an
+explicit manifest/native wrapper. Inference neither performs cross-OS/CPU
+execution nor introduces new raw C++ runtime/unwind support.
+
 ## Status and ownership
 
 | Status | Meaning |

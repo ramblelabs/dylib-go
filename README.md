@@ -873,6 +873,13 @@ creates fixed C exports from explicit scalar, object and function-pointer
 transports, including concrete variadic calls. See the [executed selections](examples/cxx/free_functions.go)
 and [free-function scope](docs/cxx.md#free-functions).
 
+`cxx.InferFunctions` derives scalar, enum-underlying and opaque native-pointer
+transports for selected unambiguous free/static functions. Supply native names,
+C export names and optional template arguments; the compiler determines widths
+and signedness and checks the generated facade. See the
+[executed inference example](examples/cxx/inferred.go) and
+[type and lifetime limits](docs/cxx.md#inferred-function-transports).
+
 `cxx.DiscoverFunctionTemplates` also catalogs named namespace function templates.
 `Function.TemplateArgs` and `Method.TemplateArgs` select concrete type/value
 arguments, including defaults, packs and generic lambda calls; nil and empty

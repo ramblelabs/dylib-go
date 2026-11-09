@@ -193,6 +193,30 @@ func decodeBases(data []byte, namespace string, names []string, probes []basePro
 
 // Both inheritance and class discovery use exact compiler Boolean answers.
 func decodeDiscoveryValues(data []byte, namespace string, count int) (map[string]bool, error) {
+	answers, err := decodeDiscoveryAnswers(data, namespace, count)
+	if err != nil {
+		return nil, err
+	}
+	values := make(map[string]bool, len(answers))
+	for name, answer := range answers {
+		switch answer {
+		case "true":
+			values[name] = true
+		case "false":
+			values[name] = false
+		default:
+			return nil, fmt.Errorf("cxx: unrecognized discovery probe %q", name)
+		}
+	}
+	return values, nil
+}
+
+// Both Boolean discovery and scalar inference require exact named Answer values,
+// one namespace root, unique aliases and the expected probe count.
+func decodeDiscoveryAnswers(data []byte, namespace string, count int) (map[string]string, error) {
+	if err := preflightDiscoveryAST(data); err != nil {
+		return nil, err
+	}
 	var ast struct {
 		Kind, Name string
 		Inner      []struct {
@@ -208,7 +232,7 @@ func decodeDiscoveryValues(data []byte, namespace string, count int) (map[string
 	if err := decoder.Decode(&trailing); err != io.EOF || ast.Kind != "NamespaceDecl" || ast.Name != namespace {
 		return nil, fmt.Errorf("cxx: unexpected discovery AST root or trailing data")
 	}
-	values := make(map[string]bool)
+	values := make(map[string]string)
 	for _, node := range ast.Inner {
 		if node.Kind != "TypeAliasDecl" {
 			continue
@@ -216,14 +240,16 @@ func decodeDiscoveryValues(data []byte, namespace string, count int) (map[string
 		if _, duplicate := values[node.Name]; duplicate {
 			return nil, fmt.Errorf("cxx: duplicate discovery probe %q", node.Name)
 		}
-		switch node.Type.DesugaredQualType {
-		case namespace + "::Answer<true>":
-			values[node.Name] = true
-		case namespace + "::Answer<false>":
-			values[node.Name] = false
-		default:
+		prefix := namespace + "::Answer<"
+		value, ok := strings.CutPrefix(node.Type.DesugaredQualType, prefix)
+		if !ok || !strings.HasSuffix(value, ">") {
 			return nil, fmt.Errorf("cxx: unrecognized discovery probe %q", node.Name)
 		}
+		value = strings.TrimSuffix(value, ">")
+		if value == "" || strings.ContainsAny(value, "<>") {
+			return nil, fmt.Errorf("cxx: unrecognized discovery probe %q", node.Name)
+		}
+		values[node.Name] = value
 	}
 	if len(values) != count {
 		return nil, fmt.Errorf("cxx: unexpected discovery probe count")
