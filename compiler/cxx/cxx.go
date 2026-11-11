@@ -141,6 +141,8 @@ type facadeOptions struct {
 	preamble    string
 	// Inferred non-static adapters expose their native receiver as argument zero.
 	nonnullReceiver bool
+	// Inferred constructors restore native argument types before overload selection.
+	constructorArguments map[string]string
 }
 
 func generate(header string, classes []Class, options facadeOptions) (*Facade, error) {
@@ -178,6 +180,9 @@ func generate(header string, classes []Class, options facadeOptions) (*Facade, e
 			parameters, _, args, checks, err := nativeArguments(constructor.Args, constructor.ObjectArgs, constructor.FunctionArgs)
 			if err != nil {
 				return nil, fmt.Errorf("cxx: constructor %s: %w", constructor.Symbol, err)
+			}
+			if restored, ok := options.constructorArguments[constructor.Symbol]; ok {
+				args = restored
 			}
 			parameters = append(parameters, "void **output")
 			body := fmt.Sprintf(`if (!output || *output) return DYLIB_CXX_INVALID_ARGUMENT;

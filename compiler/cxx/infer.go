@@ -130,21 +130,25 @@ func inferSelected(ctx context.Context, header string, selections []FunctionSele
 	if err != nil {
 		return nil, err
 	}
+	if err := validateInferredFacade(ctx, query, facade); err != nil {
+		return nil, err
+	}
+	inferred.facade = facade
+	return inferred, nil
+}
+
+func validateInferredFacade(ctx context.Context, query *discoveryCompiler, facade *Facade) error {
 	if len(facade.CXXSource) > maxDiscoverySource {
-		return nil, fmt.Errorf("cxx: inferred facade exceeds source budget")
+		return fmt.Errorf("cxx: inferred facade exceeds source budget")
 	}
 	// The generated source includes the original header exactly once, including
 	// headers without guards. Do not add discoveryCommand.run's forced include.
 	args := append([]string(nil), query.args...)
 	args = append(args, "-x", "c++", "-std=c++17", "-fsyntax-only", "-")
 	if _, err := clangcmd.Run(ctx, query.compiler, args, string(facade.CXXSource), maxDiscoveryAST, false); err != nil {
-		return nil, fmt.Errorf("cxx: inferred facade: %w", err)
+		return fmt.Errorf("cxx: inferred facade: %w", err)
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	inferred.facade = facade
-	return inferred, nil
+	return ctx.Err()
 }
 
 func inferenceSelections(input []FunctionSelection) ([]FunctionSelection, string, error) {

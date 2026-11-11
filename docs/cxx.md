@@ -285,6 +285,50 @@ is required, including native parameters with default arguments. Unresolved
 ambiguity, incompatible receiver forms, inaccessible conversions, variadics and
 unsupported value/reference transports return no facade.
 
+## Inferred constructor arguments
+
+`InferConstructors` accepts `ConstructorSelection{Class, Symbol, ArgumentTypes}`
+and generates allocation exports with compiler-derived scalar, enum-underlying
+and opaque native-pointer carriers. Each selection supplies up to 32 ordered
+native argument type names, using the same bounded spellings and header aliases
+as overload selection. Select 1-256 distinct exports. Empty arguments select an
+empty call expression, including native default arguments. Returned selections
+own independent snapshots.
+
+`ArgumentTypes` describes the expressions supplied to `new Class(...)`.
+Constructors have no addressable member pointer: this API does not extract or
+match a constructor's exact parameter list. C++ overload resolution, implicit
+conversions, default arguments and constructor-template deduction apply. Native
+casts preserve enum, `int`/`long`, pointee and function-pointer identity before
+selection. Scalar/pointer casts produce prvalues; top-level cv does not create a
+qualified xvalue. Class-template specializations use header aliases.
+
+`InferredConstructor.Transport` contains these argument carriers and a pointer
+allocation result. Parse `Facade.CHeader` for its actual C status/output ABI.
+One Clang query derives transports; another validates generated new-expressions
+and the complete facade. Source/AST/diagnostic/cancellation limits apply as for
+other inference APIs. Pointer-width and carrier guards detect incompatible
+producer targets or flags. Source files, native type contracts, C++ runtime and
+SDK must match the producer.
+
+The shared allocation wrapper rejects null or occupied output slots before
+construction, preserves an occupied slot, catches C++ exceptions and publishes
+only a successful non-null allocation. Constructor/allocation failure leaves an
+initially null output empty. Missing, inaccessible, deleted or abstract
+constructions and unsupported value/reference/extended numeric arguments return
+no facade. Function and array aliases are rejected before parameter adjustment;
+use explicit native pointer aliases instead.
+
+Destruction, retained pointers/callbacks and ownership remain explicit contracts.
+Compose an explicit deletion/member manifest, keeping both the provider and
+borrowed arguments alive as required by the native API. The
+[executed selections](../examples/cxx/inferred_constructors.go) use a guarded
+header to combine sources; unguarded headers require separate translation units.
+Generated cgo/direct llgo and dynamic libffi tests run optimized/unoptimized
+libraries, distinguish equal-width overloads, exercise defaults, conversions,
+templates and native function pointers, and verify failed allocations, occupied
+slots and native owner counts.
+
 ## Status and ownership
 
 | Status | Meaning |

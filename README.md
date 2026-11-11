@@ -899,6 +899,13 @@ qualifiers and `noexcept`. The [executed conversion selections](examples/cxx/inf
 cover explicit and template conversions, inherited and virtual dispatch, borrowed
 pointers and native function pointers. See the [conversion inference contract](docs/cxx.md#inferred-conversion-operators).
 
+`cxx.InferConstructors` derives scalar, enum and native-pointer carriers for
+selected allocation arguments. C++ performs constructor overload resolution,
+default arguments, conversions and template deduction after restoring native
+argument types. Destruction stays explicit; see the
+[executed constructor selections](examples/cxx/inferred_constructors.go) and
+[allocation contract](docs/cxx.md#inferred-constructor-arguments).
+
 `cxx.DiscoverFunctionTemplates` also catalogs named namespace function templates.
 `Function.TemplateArgs` and `Method.TemplateArgs` select concrete type/value
 arguments, including defaults, packs and generic lambda calls; nil and empty
