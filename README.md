@@ -893,6 +893,12 @@ cv/ref qualifiers, while the compiler infers the result, transports and
 See the [executed overload selections](examples/cxx/inferred_overloads.go)
 and [selection rules](docs/cxx.md#inferred-overload-selection).
 
+`MethodSelection.ConversionType` selects native conversion operators and derives
+their scalar, enum or opaque-pointer result transports, including receiver
+qualifiers and `noexcept`. The [executed conversion selections](examples/cxx/inferred_conversions.go)
+cover explicit and template conversions, inherited and virtual dispatch, borrowed
+pointers and native function pointers. See the [conversion inference contract](docs/cxx.md#inferred-conversion-operators).
+
 `cxx.DiscoverFunctionTemplates` also catalogs named namespace function templates.
 `Function.TemplateArgs` and `Method.TemplateArgs` select concrete type/value
 arguments, including defaults, packs and generic lambda calls; nil and empty

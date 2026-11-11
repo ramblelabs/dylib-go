@@ -180,8 +180,8 @@ supported for the producer's default member calling convention. Other native
 conventions require explicit wrappers. Name an unambiguous non-static member, a concrete member-template
 specialization, or `operator()` of a named class/lambda alias. Static members use
 `InferFunctions`. Optional overload selections supply native parameter and
-receiver types. Conversion operators, constructors and destruction use explicit
-manifests/native wrappers.
+receiver types. `ConversionType` selects native conversion operators as described
+below. Constructors and destruction use explicit owner manifests.
 
 `InferredMethod.Transport` excludes the receiver. The actual C export takes an
 opaque receiver first, then the logical argument transports and an output pointer
@@ -209,6 +209,38 @@ changes in receiver cv/ref or `noexcept` qualifiers. Unsupported class/union
 values, references, member-pointer values, variadics and inaccessible/ambiguous
 receiver conversions return no facade. Go never interprets member-pointer bytes,
 class layouts, vtable entries or base offsets.
+
+## Inferred conversion operators
+
+`MethodSelection.ConversionType` selects a native conversion operator through
+`InferMethods`. The compiler derives scalar, enum-underlying or opaque-address
+result transports and receiver cv/ref/`noexcept` properties. The
+[executed conversion example](../examples/cxx/inferred_conversions.go) includes
+explicit operators, target-deduced conversion templates, inherited conversions,
+public virtual-base adjustment and virtual dispatch through an adjusted base view.
+
+| Selection | Requirement |
+| --- | --- |
+| `ConversionType` | One builtin type keyword or qualified header alias, up to 256 bytes |
+| `Name` | Empty |
+| `TemplateArgs` | Nil, with template deduction supplied by the native conversion target |
+| `Overload` | Optional receiver cv/ref selection with an empty parameter list |
+
+The target type uses the same bounded spelling and global lookup rules as native
+overload parameters. Header aliases provide multiword, pointer and function-pointer
+types. The compiler resolves the named conversion function directly. Ordinary
+implicit conversion sequences do not select a different conversion target.
+Omitting `Overload` requires an unambiguous conversion to that target. A receiver
+selection preserves the exact native cv/ref and `noexcept` member-pointer type.
+
+Conversion metadata has zero logical arguments. The C export takes the selected
+class receiver and an output pointer, and returns the shared status code. Null
+receivers, null outputs, exception handling and producer type/qualifier guards
+follow member inference. An rvalue-qualified conversion can mutate the existing
+object, whose destruction remains the application's responsibility. Borrowed
+object and function-pointer results retain the original API's lifetime and native
+prototype contracts. Constructor/destructor ownership, reference/value conversions
+and unsupported result types require explicit native manifests or wrappers.
 
 ## Inferred overload selection
 
