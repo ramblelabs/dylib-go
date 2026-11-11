@@ -28,7 +28,7 @@ func snapshotFunctionOverload(input *FunctionOverload) (*FunctionOverload, error
 		return nil, fmt.Errorf("at most %d overload parameter types are supported", maxInferredArguments)
 	}
 	for i, name := range input.ParameterTypes {
-		if len(name) > maxDiscoveryName || name == "void" || (!qualifiedName(name) && !nativeBuiltinType(name)) {
+		if !validNativeTypeName(name) {
 			return nil, fmt.Errorf("invalid overload parameter type %d %q", i, name)
 		}
 	}
@@ -37,6 +37,10 @@ func snapshotFunctionOverload(input *FunctionOverload) (*FunctionOverload, error
 		result.ParameterTypes = append([]string{}, input.ParameterTypes...)
 	}
 	return &result, nil
+}
+
+func validNativeTypeName(name string) bool {
+	return len(name) <= maxDiscoveryName && name != "void" && (qualifiedName(name) || nativeBuiltinType(name))
 }
 
 func overloadArguments(arguments []string) string {

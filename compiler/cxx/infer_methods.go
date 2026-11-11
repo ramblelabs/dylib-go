@@ -11,13 +11,19 @@ import (
 )
 
 // MethodSelection names a non-static member of a qualified class
-// or class alias. Name accepts an identifier or operator(). TemplateArgs follows
-// Function.TemplateArgs. Constructors, destruction and ownership stay explicit.
+// or class alias. Name accepts an identifier or operator(). ConversionType selects
+// a conversion operator with an empty Name. TemplateArgs follows Function.TemplateArgs
+// for ordinary methods. Constructors, destruction and ownership stay explicit.
 type MethodSelection struct {
 	Class, Name, Symbol string
 	TemplateArgs        []string
 	// Overload selects native parameter types and receiver cv/ref qualifiers.
 	Overload *MethodOverload `json:",omitempty"`
+	// ConversionType names the native target type of a conversion operator.
+	// Use a builtin keyword or qualified header alias. Name must be empty,
+	// TemplateArgs nil and Overload.ParameterTypes empty. Overload may select
+	// receiver qualifiers. The compiler infers the result transport and noexcept.
+	ConversionType string `json:",omitempty"`
 }
 
 // InferredMethod describes native arguments/result, excluding the receiver.
@@ -46,7 +52,8 @@ type InferredMethodFacade struct {
 //
 // Select 1-256 unambiguous non-static methods, each with at most 32 explicit native
 // parameters. Overload selects native parameter and receiver types when resolving
-// overloaded names. Static functions use InferFunctions; unresolved overloads, unsupported
+// overloaded names. ConversionType selects scalar/enum/address conversion operators.
+// Static functions use InferFunctions; unresolved overloads, unsupported
 // value/reference types and variadics need explicit manifests/native wrappers.
 // Rvalue-qualified calls neither consume nor destroy a handle automatically.
 // Ownership, constructor/destructor policy and callback prototypes stay explicit.
@@ -79,7 +86,14 @@ func inferenceMethods(input []MethodSelection) ([]MethodSelection, []FunctionSel
 	selections := make([]FunctionSelection, len(input))
 	seen := map[string]bool{}
 	for i, s := range input {
-		if len(s.Class) > maxDiscoveryName || !qualifiedName(s.Class) || len(s.Name) > maxDiscoveryName || (!identifier(s.Name) && s.Name != "operator()") {
+		if len(s.Class) > maxDiscoveryName || !qualifiedName(s.Class) {
+			return nil, nil, "", fmt.Errorf("cxx: invalid inferred method name %q::%q", s.Class, s.Name)
+		}
+		if s.ConversionType != "" {
+			if !validNativeTypeName(s.ConversionType) || s.Name != "" || s.TemplateArgs != nil || s.Overload != nil && len(s.Overload.ParameterTypes) != 0 {
+				return nil, nil, "", fmt.Errorf("cxx: invalid inferred conversion %q::%q", s.Class, s.ConversionType)
+			}
+		} else if len(s.Name) > maxDiscoveryName || (!identifier(s.Name) && s.Name != "operator()") {
 			return nil, nil, "", fmt.Errorf("cxx: invalid inferred method name %q::%q", s.Class, s.Name)
 		}
 		if s.Overload != nil {
@@ -94,7 +108,7 @@ func inferenceMethods(input []MethodSelection) ([]MethodSelection, []FunctionSel
 			choice.ParameterTypes = selected.ParameterTypes
 			s.Overload = &choice
 		}
-		selected, err := snapshotInferenceExport(FunctionSelection{Name: s.Class + "::" + s.Name, Symbol: s.Symbol, TemplateArgs: s.TemplateArgs}, seen)
+		selected, err := snapshotInferenceExport(FunctionSelection{Name: s.Class + "::" + inferredMethodName(s), Symbol: s.Symbol, TemplateArgs: s.TemplateArgs}, seen)
 		if err != nil {
 			return nil, nil, "", err
 		}
@@ -105,6 +119,13 @@ func inferenceMethods(input []MethodSelection) ([]MethodSelection, []FunctionSel
 	encoded, _ := json.Marshal(methods)
 	hash := sha256.Sum256(encoded)
 	return methods, selections, fmt.Sprintf("dylib_go_inferred_methods_%x", hash[:8]), nil
+}
+
+func inferredMethodName(selection MethodSelection) string {
+	if selection.ConversionType != "" {
+		return "operator " + overloadTypes([]string{selection.ConversionType})[0]
+	}
+	return selection.Name
 }
 
 // Specialize all twelve receiver forms, preserving exact native member pointer

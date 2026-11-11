@@ -221,7 +221,8 @@ func inferenceAliases(selections []FunctionSelection, methods []MethodSelection)
 			fmt.Fprintf(&source, "using P%d=Prototype<decltype(%s)>;\nstatic constexpr auto native_%d=%s;\n", i, selector, i, selector)
 		} else {
 			fmt.Fprintf(&source, "using C%d=::%s;\n", i, methods[i].Class)
-			selector := fmt.Sprintf("&C%d::%s%s", i, methods[i].Name, template)
+			name := inferredMethodName(methods[i])
+			selector := fmt.Sprintf("&C%d::%s%s", i, name, template)
 			if choice := methods[i].Overload; choice != nil {
 				types := overloadTypes(choice.ParameterTypes)
 				class := fmt.Sprintf("C%d", i)
@@ -229,9 +230,15 @@ func inferenceAliases(selections []FunctionSelection, methods []MethodSelection)
 				if choice.Ref == RefRValue {
 					receiver += "&"
 				}
-				call := "argument<" + receiver + ">()." + methods[i].Name + template + "(" + overloadValues(types) + ")"
+				call := "argument<" + receiver + ">()." + name + template + "(" + overloadValues(types) + ")"
 				result := fmt.Sprintf("R%d", i)
-				fmt.Fprintf(&source, "using %s=decltype(%s);\n", result, call)
+				resultType := "decltype(" + call + ")"
+				if methods[i].ConversionType != "" {
+					// The conversion target also preserves top-level result cv,
+					// which scalar prvalue call expressions would discard.
+					resultType = overloadTypes([]string{methods[i].ConversionType})[0]
+				}
+				fmt.Fprintf(&source, "using %s=%s;\n", result, resultType)
 				args := []string{fmt.Sprint(methodOverloadQualifiers(choice)), class, result}
 				args = append(args, types...)
 				selector = "ChooseMember" + overloadArguments(args) + "::pick(" + selector + ")"
@@ -316,7 +323,7 @@ func decodeInference(data []byte, namespace string, selections []FunctionSelecti
 		if err != nil {
 			return nil, err
 		}
-		if !inferredType(r, true) {
+		if !inferredType(r, true) || methods != nil && methods[i].ConversionType != "" && r == int(abi.Void) {
 			return nil, fmt.Errorf("cxx: unsupported inferred result for %s", s.Name)
 		}
 		f := InferredFunction{Selection: s, Transport: abi.Signature{Result: abi.Type(r), Args: make([]abi.Type, n)}}
