@@ -37,8 +37,12 @@ func templateArguments(args []string) (string, error) {
 }
 
 func templateBuiltin(value string) bool {
+	return nativeBuiltinType(value) || value == "true" || value == "false" || value == "nullptr"
+}
+
+func nativeBuiltinType(value string) bool {
 	switch value {
-	case "bool", "char", "signed", "unsigned", "short", "int", "long", "float", "double", "void", "wchar_t", "char16_t", "char32_t", "true", "false", "nullptr":
+	case "bool", "char", "signed", "unsigned", "short", "int", "long", "float", "double", "void", "wchar_t", "char16_t", "char32_t":
 		return true
 	}
 	return false

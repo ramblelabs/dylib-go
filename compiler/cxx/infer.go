@@ -13,12 +13,14 @@ import (
 	"github.com/ramblelabs/dylib-go/compiler/internal/clangcmd"
 )
 
-// FunctionSelection names one unambiguous free/static function and its C export.
+// FunctionSelection names a free/static function and its C export.
 // TemplateArgs has Function.TemplateArgs' bounded syntax and nil/empty semantics.
-// No native type spelling is interpreted as a Go ABI description.
+// Overload selects native parameter types for compiler overload resolution.
 type FunctionSelection struct {
 	Name, Symbol string
 	TemplateArgs []string
+	// Overload selects native parameter types when resolving an overload set.
+	Overload *FunctionOverload `json:",omitempty"`
 }
 
 // InferredFunction reports the compiler-derived scalar/enum/address transports
@@ -40,13 +42,14 @@ const maxInferredArguments = 32
 
 // InferFunctions uses optional Clang C++17 queries to derive fixed scalar,
 // enum-underlying and opaque-native-pointer transports for 1-256 unambiguous
-// functions, then generates and compiler-checks a C facade. Each function has at
+// functions, then generates and compiler-checks a C facade. Overload can select
+// native parameter types within an overload set. Each function has at
 // most 32 arguments. Plain/typedef integer widths, signedness, bool, float/double,
 // object/function pointers, noexcept and explicit template selections participate.
 // Pointer addresses use the qualified producer's native conversion contract.
 //
 // Unsupported class/union values, references, extended numeric types, variadics,
-// member pointers and ambiguous overloads fail without partial results. Native
+// member pointers and unresolved overloads fail without partial results. Native
 // function-pointer extraction must match the compiler's default ABI. Use explicit
 // manifests/native wrappers for other selections. No pointer ownership, retained
 // callback lifetime, record layout or constructor/destructor policy is inferred.
@@ -173,6 +176,13 @@ func snapshotInferenceExport(s FunctionSelection, seen map[string]bool) (Functio
 	if _, err := templateArguments(s.TemplateArgs); err != nil {
 		return FunctionSelection{}, fmt.Errorf("cxx: inferred %s: %w", s.Name, err)
 	}
+	if s.Overload != nil {
+		selected, err := snapshotFunctionOverload(s.Overload)
+		if err != nil {
+			return FunctionSelection{}, fmt.Errorf("cxx: inferred %s overload: %w", s.Name, err)
+		}
+		s.Overload = selected
+	}
 	seen[s.Symbol] = true
 	if s.TemplateArgs != nil {
 		s.TemplateArgs = append([]string{}, s.TemplateArgs...)
@@ -182,16 +192,51 @@ func snapshotInferenceExport(s FunctionSelection, seen map[string]bool) (Functio
 
 func inferenceAliases(selections []FunctionSelection, methods []MethodSelection) string {
 	var source strings.Builder
+	overloaded := false
+	for i, s := range selections {
+		if s.Overload != nil || methods != nil && methods[i].Overload != nil {
+			overloaded = true
+			break
+		}
+	}
 	source.WriteString(inferenceTraits())
+	if overloaded {
+		source.WriteString(inferenceOverloadTraits)
+	}
 	if methods != nil {
-		source.WriteString(memberInferenceTraits())
+		source.WriteString(memberInferenceTraits(overloaded))
 	}
 	for i, s := range selections {
 		template, _ := templateArguments(s.TemplateArgs)
 		if methods == nil {
-			fmt.Fprintf(&source, "using P%d=Prototype<decltype(&::%s%s)>;\nstatic constexpr auto native_%d=&::%s%s;\n", i, s.Name, template, i, s.Name, template)
+			selector := "&::" + s.Name + template
+			if s.Overload != nil {
+				types := overloadTypes(s.Overload.ParameterTypes)
+				result := fmt.Sprintf("R%d", i)
+				call := "::" + s.Name + template + "(" + overloadValues(types) + ")"
+				fmt.Fprintf(&source, "using %s=decltype(%s);\n", result, call)
+				args := append([]string{result}, types...)
+				selector = "ChooseFunction" + overloadArguments(args) + "::pick(" + selector + ")"
+			}
+			fmt.Fprintf(&source, "using P%d=Prototype<decltype(%s)>;\nstatic constexpr auto native_%d=%s;\n", i, selector, i, selector)
 		} else {
-			fmt.Fprintf(&source, "using C%d=::%s;\nusing P%d=Member<decltype(&C%d::%s%s)>;\nstatic constexpr auto native_%d=&C%d::%s%s;\n", i, methods[i].Class, i, i, methods[i].Name, template, i, i, methods[i].Name, template)
+			fmt.Fprintf(&source, "using C%d=::%s;\n", i, methods[i].Class)
+			selector := fmt.Sprintf("&C%d::%s%s", i, methods[i].Name, template)
+			if choice := methods[i].Overload; choice != nil {
+				types := overloadTypes(choice.ParameterTypes)
+				class := fmt.Sprintf("C%d", i)
+				receiver := cvQualified(class, choice.Const, choice.Volatile) + "&"
+				if choice.Ref == RefRValue {
+					receiver += "&"
+				}
+				call := "argument<" + receiver + ">()." + methods[i].Name + template + "(" + overloadValues(types) + ")"
+				result := fmt.Sprintf("R%d", i)
+				fmt.Fprintf(&source, "using %s=decltype(%s);\n", result, call)
+				args := []string{fmt.Sprint(methodOverloadQualifiers(choice)), class, result}
+				args = append(args, types...)
+				selector = "ChooseMember" + overloadArguments(args) + "::pick(" + selector + ")"
+			}
+			fmt.Fprintf(&source, "using P%d=Member<decltype(%s)>;\nstatic constexpr auto native_%d=%s;\n", i, selector, i, selector)
 		}
 	}
 	return source.String()

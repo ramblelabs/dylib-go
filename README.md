@@ -886,6 +886,13 @@ Native member pointers preserve inherited/virtual dispatch. Construction and
 ownership remain explicit; see the [executed member inference example](examples/cxx/inferred_methods.go)
 and [member inference contract](docs/cxx.md#inferred-member-transports).
 
+Optional `FunctionSelection.Overload` and `MethodSelection.Overload` resolve
+functions by native parameter types. Member selections also specify receiver
+cv/ref qualifiers, while the compiler infers the result, transports and
+`noexcept` status. Header aliases can name pointer and compound parameter types.
+See the [executed overload selections](examples/cxx/inferred_overloads.go)
+and [selection rules](docs/cxx.md#inferred-overload-selection).
+
 `cxx.DiscoverFunctionTemplates` also catalogs named namespace function templates.
 `Function.TemplateArgs` and `Method.TemplateArgs` select concrete type/value
 arguments, including defaults, packs and generic lambda calls; nil and empty
