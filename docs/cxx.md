@@ -111,8 +111,8 @@ type inspection. Separate namespace and member queries are described below.
 only names and optional template arguments. An optional Clang-compatible C++17
 compiler derives each native function pointer, its argument count and transport
 types, then validates the complete generated source. Free functions and accessible
-static members must be unambiguous; `noexcept` and explicit template selections
-work. All native parameters participate, including ones with default arguments.
+static members resolve through their names and optional native overload selections;
+`noexcept` and explicit template selections work. All native parameters participate, including ones with default arguments.
 
 | Native type | Inferred transport | Contract |
 | --- | --- | --- |
@@ -179,8 +179,9 @@ each member's argument/result carriers and its `Const`, `Volatile`, `Ref` and
 supported for the producer's default member calling convention. Other native
 conventions require explicit wrappers. Name an unambiguous non-static member, a concrete member-template
 specialization, or `operator()` of a named class/lambda alias. Static members use
-`InferFunctions`; ambiguous overloads, conversion operators, constructors and
-destruction continue to use explicit manifests/native wrappers.
+`InferFunctions`. Optional overload selections supply native parameter and
+receiver types. Conversion operators, constructors and destruction use explicit
+manifests/native wrappers.
 
 `InferredMethod.Transport` excludes the receiver. The actual C export takes an
 opaque receiver first, then the logical argument transports and an output pointer
@@ -208,6 +209,49 @@ changes in receiver cv/ref or `noexcept` qualifiers. Unsupported class/union
 values, references, member-pointer values, variadics and inaccessible/ambiguous
 receiver conversions return no facade. Go never interprets member-pointer bytes,
 class layouts, vtable entries or base offsets.
+
+## Inferred overload selection
+
+`FunctionSelection.Overload` accepts a `FunctionOverload{ParameterTypes}` and
+`MethodSelection.Overload` accepts a
+`MethodOverload{ParameterTypes, Const, Volatile, Ref}`. The
+[executed example](../examples/cxx/inferred_overloads.go) selects scalar, enum,
+object-pointer and native function-pointer overloads, static methods, member
+templates, cv/ref overloads, inherited methods and native virtual dispatch.
+
+| Selection field | Compiler input |
+| --- | --- |
+| `ParameterTypes` | Complete ordered native C++ parameter type list |
+| `Const`, `Volatile` on `MethodOverload` | Receiver cv qualification |
+| `RefNone`, `RefLValue`, `RefRValue` | Ordinary, lvalue-qualified or rvalue-qualified member pointer |
+| Existing `TemplateArgs` | Explicit bounded function/member template arguments |
+
+A non-nil `Overload` with an empty parameter list selects zero parameters.
+The compiler derives the result through an unevaluated call expression, then
+resolves the address against a complete function/member-pointer target. The
+parameter list follows C++ function-type matching rules, including typedef
+identity and top-level parameter cv normalization. Selection requires matching
+native parameter types and arity. Call expressions, pointer selection, access,
+constraints and template substitution must all be valid. `Noexcept` is inferred
+from the resolved member. Generated C exports use the shared status/output,
+transport, receiver and exception machinery.
+
+Accepted spellings are builtin type keywords and qualified identifiers with up
+to 256 bytes per name and 32 parameters per selection. Type names resolve from
+the original header's global namespace. Header aliases provide multiword types,
+pointer qualifiers, function-pointer types and other compound spellings. The
+compiler checks alias meaning and transport support. Template arguments retain
+the existing bounded grammar. Selection metadata owns independent overload and
+parameter-list snapshots. The shared aggregate source/AST limits also apply.
+
+Native types with equal byte widths retain distinct overload identity, including
+`int` and `long` on Windows. Pointee qualification and function-pointer prototypes
+participate in native selection even when the C carrier is an opaque address.
+The return carriers, callback signatures, value domains and ownership follow the
+same contracts as function/member inference. The complete logical parameter list
+is required, including native parameters with default arguments. Unresolved
+ambiguity, incompatible receiver forms, inaccessible conversions, variadics and
+unsupported value/reference transports return no facade.
 
 ## Status and ownership
 

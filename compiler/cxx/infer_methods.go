@@ -10,12 +10,14 @@ import (
 	"github.com/ramblelabs/dylib-go/abi"
 )
 
-// MethodSelection names one unambiguous non-static member of a qualified class
+// MethodSelection names a non-static member of a qualified class
 // or class alias. Name accepts an identifier or operator(). TemplateArgs follows
 // Function.TemplateArgs. Constructors, destruction and ownership stay explicit.
 type MethodSelection struct {
 	Class, Name, Symbol string
 	TemplateArgs        []string
+	// Overload selects native parameter types and receiver cv/ref qualifiers.
+	Overload *MethodOverload `json:",omitempty"`
 }
 
 // InferredMethod describes native arguments/result, excluding the receiver.
@@ -43,7 +45,8 @@ type InferredMethodFacade struct {
 // Class subobject; no Go-side class layout, base offset or RTTI is inferred.
 //
 // Select 1-256 unambiguous non-static methods, each with at most 32 explicit native
-// parameters. Static functions use InferFunctions; ambiguous overloads, unsupported
+// parameters. Overload selects native parameter and receiver types when resolving
+// overloaded names. Static functions use InferFunctions; unresolved overloads, unsupported
 // value/reference types and variadics need explicit manifests/native wrappers.
 // Rvalue-qualified calls neither consume nor destroy a handle automatically.
 // Ownership, constructor/destructor policy and callback prototypes stay explicit.
@@ -79,6 +82,18 @@ func inferenceMethods(input []MethodSelection) ([]MethodSelection, []FunctionSel
 		if len(s.Class) > maxDiscoveryName || !qualifiedName(s.Class) || len(s.Name) > maxDiscoveryName || (!identifier(s.Name) && s.Name != "operator()") {
 			return nil, nil, "", fmt.Errorf("cxx: invalid inferred method name %q::%q", s.Class, s.Name)
 		}
+		if s.Overload != nil {
+			if s.Overload.Ref > RefRValue {
+				return nil, nil, "", fmt.Errorf("cxx: invalid overload receiver ref qualifier")
+			}
+			choice := *s.Overload
+			selected, err := snapshotFunctionOverload(&FunctionOverload{ParameterTypes: choice.ParameterTypes})
+			if err != nil {
+				return nil, nil, "", fmt.Errorf("cxx: inferred %s::%s overload: %w", s.Class, s.Name, err)
+			}
+			choice.ParameterTypes = selected.ParameterTypes
+			s.Overload = &choice
+		}
 		selected, err := snapshotInferenceExport(FunctionSelection{Name: s.Class + "::" + s.Name, Symbol: s.Symbol, TemplateArgs: s.TemplateArgs}, seen)
 		if err != nil {
 			return nil, nil, "", err
@@ -94,9 +109,12 @@ func inferenceMethods(input []MethodSelection) ([]MethodSelection, []FunctionSel
 
 // Specialize all twelve receiver forms, preserving exact native member pointer
 // types, including noexcept. No member-pointer bytes or vtable offsets enter Go.
-func memberInferenceTraits() string {
+func memberInferenceTraits(overloaded bool) string {
 	var out strings.Builder
 	out.WriteString("template<class F> struct Member;\n")
+	if overloaded {
+		out.WriteString("template<int Q,class C,class R,class... A> struct ChooseMember;\n")
+	}
 	for ref := RefNone; ref <= RefRValue; ref++ {
 		for cv := 0; cv < 4; cv++ {
 			qual := cvQualified("", cv&1 != 0, cv&2 != 0)
@@ -113,6 +131,11 @@ func memberInferenceTraits() string {
 				receiver += "&"
 			}
 			q := int(ref)*4 + cv
+			if overloaded {
+				// Selected-class targets resolve template addresses. Deduced
+				// declaring classes preserve inherited member pointers.
+				fmt.Fprintf(&out, "template<class C,class R,class... A> struct ChooseMember<%d,C,R,A...> {\n static constexpr auto pick(R(C::*p)(A...) %s) { return p; }\n static constexpr auto pick(R(C::*p)(A...) %s noexcept) { return p; }\n template<class B> static constexpr auto pick(R(B::*p)(A...) %s) { return p; }\n template<class B> static constexpr auto pick(R(B::*p)(A...) %s noexcept) { return p; }\n};\n", q, spelling, spelling, spelling, spelling)
+			}
 			fmt.Fprintf(&out, "template<class C,class R,class... A> struct Member<R(C::*)(A...) %s>:Prototype<R(*)(A...)> { template<class T> using Receiver=%s; static constexpr int qualifiers=%d; };\n", spelling, receiver, q)
 			fmt.Fprintf(&out, "template<class C,class R,class... A> struct Member<R(C::*)(A...) %s noexcept>:Member<R(C::*)(A...) %s> { static constexpr int qualifiers=%d; };\n", spelling, spelling, q+inferredReceiverForms)
 		}
