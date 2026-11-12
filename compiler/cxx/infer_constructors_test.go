@@ -2,6 +2,7 @@ package cxx_test
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -78,7 +79,8 @@ func TestInferredConstructorInputs(t *testing.T) {
 			if err == nil || out != nil {
 				t.Fatal(out, err)
 			}
-			if strings.Contains(err.Error(), compiler) != (mode == "missing_compiler") {
+			var lookup *exec.Error
+			if errors.As(err, &lookup) != (mode == "missing_compiler") || lookup != nil && lookup.Name != compiler {
 				t.Fatal("invalid selections/context must fail before compiler lookup", err)
 			}
 		})
