@@ -17,7 +17,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     # Intel macOS needs time for both full suites and all executed examples.
     # Windows ARM64 runs an independent Go suite and both llgo native suites.
-    timeout-minutes: ${{ matrix.target == 'darwin-amd64' && 240 || matrix.target == 'windows-arm64' && 120 || 75 }}
+    timeout-minutes: ${{ matrix.target == 'darwin-amd64' && 300 || matrix.target == 'windows-arm64' && 120 || 75 }}
     strategy:
       fail-fast: false
       matrix:

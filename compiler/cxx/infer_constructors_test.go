@@ -73,9 +73,13 @@ func TestInferredConstructorInputs(t *testing.T) {
 				ctx, cancel = context.WithCancel(ctx)
 				cancel()
 			}
-			out, err := cxx.InferConstructors(ctx, "testdata/inferred_constructors.hpp", input, cxx.DiscoveryOptions{Compiler: filepath.Join(t.TempDir(), "missing")})
+			compiler := filepath.Join(t.TempDir(), "missing")
+			out, err := cxx.InferConstructors(ctx, "testdata/inferred_constructors.hpp", input, cxx.DiscoveryOptions{Compiler: compiler})
 			if err == nil || out != nil {
 				t.Fatal(out, err)
+			}
+			if strings.Contains(err.Error(), compiler) != (mode == "missing_compiler") {
+				t.Fatal("invalid selections/context must fail before compiler lookup", err)
 			}
 		})
 	}
